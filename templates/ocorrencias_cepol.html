@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+
+{% block title %}Gerenciar Ocorrências CEPOL{% endblock %}
+
+{% block content %}
+<h2 class="mb-4 text-center">Gerenciar Ocorrências CEPOL</h2>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<div class="card shadow-sm mb-5">
+    <div id="form-nova-ocorrencia" class="card mb-4 hide-for-print">
+    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Nova Ocorrência</h5>
+        <button class="btn btn-sm btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#formNovaOcorrencia" aria-expanded="true" aria-controls="formNovaOcorrencia">
+            <i class="bi bi-arrows-expand"></i> Expandir/Colapsar
+        </button>
+    </div>
+    <div class="card-body collapse show" id="formNovaOcorrencia">
+        <form method="POST" class="row g-3" id="formOcorrencia">
+            <div class="col-md-4">
+                <label for="fato" class="form-label">Fato:</label>
+                <input type="text" class="form-control" id="fato" name="fato" required>
+            </div>
+            <div class="col-md-4">
+                <label for="status" class="form-label">Status:</label>
+                <select id="status" name="status" class="form-select" required>
+                    <option value="">Selecione...</option>
+                    <option value="APF">APF</option>
+                    <option value="TCO">TCO</option>
+                    <option value="ENTREGA">ENTREGA</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="protocolo" class="form-label">Protocolo:</label>
+                <input type="text" class="form-control" id="protocolo" name="protocolo" required>
+            </div>
+            <div class="col-md-3">
+                <label for="ro_cadg" class="form-label">R.O CADG:</label>
+                <input type="text" class="form-control" id="ro_cadg" name="ro_cadg" required>
+            </div>
+            <div class="col-md-3">
+                <label for="chegada" class="form-label">Chegada (HH:MM):</label>
+                <input type="time" class="form-control" id="chegada" name="chegada" required>
+            </div>
+            <div class="col-md-3">
+                <label for="entrega_ro" class="form-label">Entrega R.O (HH:MM):</label>
+                <input type="time" class="form-control" id="entrega_ro" name="entrega_ro" required>
+            </div>
+            <div class="col-md-3">
+                <label for="saida" class="form-label">Saída (HH:MM):</label>
+                <input type="time" class="form-control" id="saida" name="saida" required>
+            </div>
+            <div class="col-md-6">
+                <label for="tempo_total_dp" class="form-label">Tempo Total DP:</label>
+                <input type="text" class="form-control" id="tempo_total_dp" name="tempo_total_dp" readonly>
+            </div>
+            <div class="col-md-6">
+                <label for="tempo_entrega_dp" class="form-label">Tempo Entrega DP:</label>
+                <input type="text" class="form-control" id="tempo_entrega_dp" name="tempo_entrega_dp" readonly>
+            </div>
+            <div class="col-12 mt-4 text-center">
+                <button type="submit" class="btn btn-success btn-lg">Registrar Ocorrência</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# BOTÃO DE IMPRIMIR PARA TODAS AS OCORRÊNCIAS #}
+<div class="text-center mb-3 hide-for-print"> {# Este div/botão não aparecerá na impressão #}
+    <button class="btn btn-primary print-button" onclick="printSection('todas-ocorrencias')">Imprimir Todas as Ocorrências</button>
+</div>
+
+{# NOVO DIV QUE ENVOLVE O TÍTULO E A TABELA DE OCORRÊNCIAS #}
+<div class="print-block" id="todas-ocorrencias">
+    <h3 class="mb-3 text-center">Ocorrências Registradas</h3>
+    {# INÍCIO: Adicionar o botão Exportar para Excel AQUI #}
+    <div class="d-flex justify-content-end mb-3">
+        <a href="{{ url_for('exportar_relatorio_excel') }}" class="btn btn-success btn-sm">
+            <i class="fas fa-file-excel"></i> Exportar para Excel
+        </a>
+    </div>
+    {# FIM: Botão Exportar para Excel #}
+    <div class="table-responsive shadow-sm rounded">
+        <table class="table table-striped table-hover caption-top">
+            <caption>Lista completa de ocorrências</caption>
+            <thead class="bg-primary text-white">
+                <tr>
+                    <th>ID</th>
+                    <th>Fato</th>
+                    <th>Status</th>
+                    <th>Protocolo</th>
+                    <th>R.O CADG</th>
+                    <th>Chegada</th>
+                    <th>Entrega R.O</th>
+                    <th>Saída</th>
+                    <th>Total DP</th>
+                    <th>Entrega DP</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ocorrencia in ocorrencias %}
+                <tr>
+                    <td>{{ ocorrencia.id }}</td>
+                    <td>{{ ocorrencia.fato }}</td>
+                    <td>{{ ocorrencia.status }}</td>
+                    <td>{{ ocorrencia.protocolo }}</td>
+                    <td>{{ ocorrencia.ro_cadg }}</td>
+                    <td>{{ ocorrencia.chegada_delegacia }}</td>
+                    <td>{{ ocorrencia.entrega_ro }}</td>
+                    <td>{{ ocorrencia.saida_delegacia }}</td>
+                    <td>{{ ocorrencia.tempo_total_dp }}</td>
+                    <td>{{ ocorrencia.tempo_entrega_dp }}</td>
+                    <td>
+                        <a href="{{ url_for('editar_ocorrencia', id=ocorrencia.id) }}" class="btn btn-sm btn-warning mb-1">Editar</a>
+                        <form action="{{ url_for('excluir_ocorrencia', id=ocorrencia.id) }}" method="POST" class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-danger mb-1" onclick="return confirm('Tem certeza que deseja excluir esta ocorrência?');">Excluir</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="11" class="text-center text-muted">Nenhuma ocorrência registrada ainda.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div> {# FIM DO NOVO DIV QUE ENVOLVE TODAS AS OCORRÊNCIAS #}
+{% endblock %}

@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+
+{% block title %}Editar Ocorrência - {{ ocorrencia.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        {# Título da página de edição #}
+        <h4>Editar Ocorrência #{{ ocorrencia.id }}</h4>
+        <div>
+            {# Botão para voltar à lista de ocorrências #}
+            <a href="{{ url_for('gerenciar_ocorrencias') }}" class="btn btn-secondary me-2">
+                <i class="fas fa-arrow-left"></i> Voltar para Ocorrências
+            </a>
+            {# Botão para a página inicial #}
+            <a href="{{ url_for('index') }}" class="btn btn-info">
+                <i class="fas fa-home"></i> Página Inicial
+            </a>
+        </div>
+    </div>
+
+    {# Exibição de mensagens flash (sucesso/erro) #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {# Card do Formulário de Edição #}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-warning text-dark"> {# Cabeçalho em tom de alerta/aviso para indicar edição #}
+            <h5 class="mb-0">Formulário de Edição de Ocorrência</h5>
+        </div>
+        <div class="card-body">
+            {# O formulário envia para a rota 'editar_ocorrencia' com o ID da ocorrência #}
+            <form method="POST" action="{{ url_for('editar_ocorrencia', id=ocorrencia.id) }}">
+                <div class="row g-3">
+                    {# Campo Fato da Ocorrência #}
+                    <div class="col-md-6">
+                        <label for="fato" class="form-label">Fato da Ocorrência:</label>
+                        {# O "value" pré-preenche o campo com os dados da ocorrência vinda do banco #}
+                        <input type="text" class="form-control" id="fato" name="fato" value="{{ ocorrencia.fato or '' }}" required>
+                    </div>
+                    {# Campo Status #}
+                    <div class="col-md-6">
+                        <label for="status" class="form-label">Status:</label>
+                        {# Para selects, a opção correta é marcada como "selected" #}
+                        <select class="form-select" id="status" name="status" required>
+                            <option value="">Selecione um Status</option> {# Opção padrão vazia #}
+                            <option value="TCO" {% if ocorrencia.status == 'TCO' %}selected{% endif %}>TCO</option>
+                            <option value="APF" {% if ocorrencia.status == 'APF' %}selected{% endif %}>APF</option>
+                            <option value="Flagrante" {% if ocorrencia.status == 'Flagrante' %}selected{% endif %}>Flagrante</option>
+                            <option value="Apreensão" {% if ocorrencia.status == 'Apreensão' %}selected{% endif %}>Apreensão</option>
+                            <option value="Boletim de Ocorrência" {% if ocorrencia.status == 'Boletim de Ocorrência' %}selected{% endif %}>Boletim de Ocorrência</option>
+                            <option value="Outros" {% if ocorrencia.status == 'Outros' %}selected{% endif %}>Outros</option>
+                            {# Adicione mais opções conforme a necessidade para o seu sistema #}
+                        </select>
+                    </div>
+                    {# Campo Protocolo #}
+                    <div class="col-md-4">
+                        <label for="protocolo" class="form-label">Protocolo:</label>
+                        <input type="text" class="form-control" id="protocolo" name="protocolo" value="{{ ocorrencia.protocolo or '' }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="ro_cadg" class="form-label">R.O. / CADG:</label>
+                        <input type="text" class="form-control" id="ro_cadg" name="ro_cadg" value="{{ ocorrencia.ro_cadg or '' }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="chegada" class="form-label">Chegada na Delegacia (HH:MM):</label>
+                        <input type="time" class="form-control" id="chegada" name="chegada" value="{{ ocorrencia.chegada_delegacia or '' }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="entrega_ro" class="form-label">Entrega R.O. (HH:MM):</label>
+                        <input type="time" class="form-control" id="entrega_ro" name="entrega_ro" value="{{ ocorrencia.entrega_ro or '' }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="saida" class="form-label">Saída da Delegacia (HH:MM):</label>
+                        <input type="time" class="form-control" id="saida" name="saida" value="{{ ocorrencia.saida_delegacia or '' }}" required>
+                    </div>
+                    {# Campos de tempo total e entrega (somente leitura, preenchidos pelo JS) #}
+                    <div class="col-md-6">
+                        <label for="tempo_total_dp" class="form-label">Tempo Total na DP:</label>
+                        <input type="text" class="form-control" id="tempo_total_dp" name="tempo_total_dp" value="{{ ocorrencia.tempo_total_dp or '' }}" readonly>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="tempo_entrega_dp" class="form-label">Tempo de Entrega R.O. na DP:</label>
+                        <input type="text" class="form-control" id="tempo_entrega_dp" name="tempo_entrega_dp" value="{{ ocorrencia.tempo_entrega_dp or '' }}" readonly>
+                    </div>
+                </div>
+                <div class="d-grid gap-2 mt-4">
+                    <button type="submit" class="btn btn-warning btn-lg">Atualizar Ocorrência</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+    {# Seu script.js contém as funções de cálculo de tempo e printSection #}
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    {# O DOMContentLoaded no seu script.js já deve chamar calculateTimes ao carregar a página #}
+{% endblock %}

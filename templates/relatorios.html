@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatórios - Sistema de Viaturas</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        /* ================================================================================================= */
+        /* === SEU CSS DO TEMA ESCURO ====================================================================== */
+        /* ================================================================================================= */
+        body {
+            background-color: #343a40; /* Cor de fundo escura */
+            color: #f8f9fa; /* Cor do texto claro */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+        }
+        h2 {
+            color: #f8f9fa; /* Título principal claro no tema escuro */
+            margin-bottom: 1.5rem;
+            text-align: center;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #6c757d;
+        }
+        .card {
+            background-color: #454d55; /* Cor de fundo dos cards mais escura */
+            color: #f8f9fa; /* Cor do texto nos cards */
+            border: 1px solid #6c757d;
+            border-radius: 0.75rem;
+            box-shadow: 0 0.5rem 1.2rem rgba(0, 0, 0, 0.2); /* Sombra mais visível no escuro */
+            transition: transform 0.2s ease-in-out;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.3);
+        }
+        .card-header {
+            background-color: #212529; /* Cor do cabeçalho do card ainda mais escura */
+            border-bottom: 1px solid #6c757d;
+            color: #f8f9fa;
+            font-weight: bold;
+            font-size: 1.2rem;
+            border-top-left-radius: 0.75rem;
+            border-top-right-radius: 0.75rem;
+            padding: 1rem 1.25rem;
+            display: flex; /* Para alinhar o título e o botão na mesma linha */
+            justify-content: space-between; /* Para empurrar o botão para a direita */
+            align-items: center; /* Para centralizar verticalmente */
+        }
+        .card-header .print-block-btn {
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+            background-color: #0d6efd; /* Botão de impressão com cor Bootstrap Primary */
+            border-color: #0d6efd;
+            color: #ffffff;
+        }
+        .card-header .print-block-btn:hover {
+            background-color: #0b5ed7;
+            border-color: #0a58ca;
+        }
+        .table {
+            --bs-table-bg: #454d55; /* Fundo da tabela escura */
+            --bs-table-striped-bg: #4f5860; /* Fundo das linhas pares */
+            --bs-table-striped-color: #f8f9fa;
+            --bs-table-hover-bg: #5a646e; /* Fundo ao passar o mouse */
+            --bs-table-hover-color: #f8f9fa;
+            --bs-table-border-color: #6c757d; /* Cor da borda da tabela */
+            color: #f8f9fa;
+        }
+        /* Garantindo que as classes de cor do Bootstrap funcionem no tema escuro, se aplicável */
+        .text-white { color: #f8f9fa !important; }
+        .text-muted { color: #adb5bd !important; } /* Cor para texto "Nenhum cadastrado" */
+
+        /* Estilo para a linha do Total Geral */
+        .total-geral-row {
+            font-weight: bold;
+            background-color: #212529 !important; /* Fundo escuro para linha total */
+            color: #ffc107 !important; /* Texto amarelo para contraste no tema escuro */
+        }
+
+        /* --- NOVO: Cores de fundo para linhas de viaturas na tabela "Todas as Viaturas Cadastradas" --- */
+        /* Cores para o tema escuro (fundo preto e fundo branco) */
+        .unit-scheme-light {
+            background-color: #f8f9fa !important; /* Fundo branco claro */
+            color: #212529 !important; /* Texto preto escuro */
+        }
+        .unit-scheme-dark {
+            background-color: #212529 !important; /* Fundo preto escuro */
+            color: #f8f9fa !important; /* Texto branco claro */
+        }
+        /* ================================================================================================= */
+        /* === FIM DO SEU CSS DO TEMA ESCURO =============================================================== */
+        /* ================================================================================================= */
+
+        /* ================================================================================================= */
+        /* === ESTILOS ESPECÍFICOS PARA IMPRESSÃO (@media print) ========================================= */
+        /* ================================================================================================= */
+        @media print {
+            /* Regras gerais para esconder elementos não desejados na impressão */
+            .hide-for-print,
+            .global-controls-container, /* Esconde os botões de navegação e impressão globais */
+            .print-block-btn, /* Esconde os botões individuais de imprimir bloco */
+            h2 /* Esconde o título principal "Relatórios de Viaturas" */
+            {
+                display: none !important;
+            }
+
+            /* Estilos para o corpo da página na impressão (fundo branco, texto preto) */
+            body {
+                background-color: #ffffff !important;
+                color: #000000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                font-size: 10pt; /* Tamanho de fonte ajustado para impressão */
+            }
+
+            /* Estilos padrão para cards na impressão */
+            .card {
+                box-shadow: none !important; /* Remove sombras para impressão */
+                border: 1px solid #dee2e6 !important; /* Adiciona uma borda fina para definição */
+                margin-bottom: 15px !important; /* Espaçamento entre cards */
+                background-color: #ffffff !important; /* Fundo branco para o card impresso */
+                color: #000000 !important; /* Texto preto para o card impresso */
+                page-break-inside: avoid; /* Tenta evitar quebra de página dentro do card (ideal para cards menores) */
+            }
+
+            /* Mostra e formata APENAS o card que deve ser impresso (usado pelo JS do "Imprimir Bloco") */
+            .card.print-target {
+                display: block !important;
+                visibility: visible !important;
+                position: relative !important;
+                left: auto !important;
+                top: auto !important;
+                width: 100% !important;
+                margin: 0 auto !important;
+                padding: 15px !important;
+                page-break-after: avoid !important;
+                page-break-inside: auto !important; /* PERMITE QUEBRAS DENTRO DO CARD GRANDE */
+            }
+
+            /* Garante que o conteúdo dentro do card visível também seja visível e tenha cor adequada */
+            .card.print-target *, .card.print-target .card-header {
+                visibility: visible !important;
+                background-color: #ffffff !important;
+                color: #000000 !important;
+            }
+
+            /* Ajustes para tabelas na impressão */
+            .table {
+                background-color: #ffffff !important;
+                color: #000000 !important;
+                --bs-table-bg: #ffffff !important;
+                --bs-table-striped-bg: #f2f2f2 !important; /* Fundo listrado claro */
+                --bs-table-striped-color: #000000 !important;
+                --bs-table-hover-bg: #e6e6e6 !important; /* Fundo hover claro */
+                --bs-table-hover-color: #000000 !important;
+                --bs-table-border-color: #dee2e6 !important;
+            }
+            .table th, .table td {
+                color: #000000 !important;
+                border-color: #dee2e6 !important;
+            }
+            /* Garante que o cabeçalho da tabela se repita em cada nova página impressa */
+            .table thead {
+                display: table-header-group !important;
+            }
+            /* Tenta evitar quebras de página dentro de uma linha da tabela */
+            .table tbody tr {
+                page-break-inside: avoid !important;
+                page-break-after: auto !important;
+            }
+
+            .total-geral-row {
+                background-color: #e9ecef !important; /* Fundo claro para a linha total */
+                color: #000000 !important; /* Texto preto para a linha total */
+            }
+            .total-geral-row-text-black {
+                color: inherit !important;
+            }
+
+            /* --- MODIFICADO: Cores de fundo para linhas de viaturas na impressão --- */
+            /* Alterna entre fundo branco puro e um cinza muito claro para o "preto" */
+            .unit-scheme-light {
+                background-color: #ffffff !important; /* Branco puro */
+                color: #000000 !important; /* Preto puro */
+            }
+            .unit-scheme-dark {
+                background-color: #e9ecef !important; /* Cinza muito claro para o esquema "escuro" */
+                color: #000000 !important; /* Preto puro */
+            }
+        }
+        /* ================================================================================================= */
+        /* === FIM DOS ESTILOS ESPECÍFICOS PARA IMPRESSÃO ================================================ */
+        /* ================================================================================================= */
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-4">
+
+        <h2 class="mb-4 text-center">Relatórios de Viaturas</h2>
+
+        {# 1. Supervisores de Serviço (sozinho - largura total) #}
+        <div class="card mb-4" id="supervisores-card">
+            <div class="card-header text-center">
+                Supervisores de Serviço
+                <button class="btn btn-sm print-block-btn" onclick="printSection('supervisores-card')">Imprimir Bloco</button>
+            </div>
+            <div class="card-body">
+                {# Aqui os dados são do supervisor_string que você gera do DB #}
+                <p class="text-white text-center">{{ supervisores_string | safe }}</p>
+            </div>
+        </div>
+
+        {# 2. CFPs Cadastrados e Viaturas por Unidade (um do lado do outro) #}
+        <div class="row">
+            <div class="col-lg-6 col-md-12 mb-4"> {# Card de CFPs Cadastrados #}
+                <div class="card" id="cfps-card">
+                    <div class="card-header">
+                        CFPs Cadastrados
+                        <button class="btn btn-sm print-block-btn" onclick="printSection('cfps-card')">Imprimir Bloco</button>
+                    </div>
+                    <div class="card-body">
+                        {% if cfps %}
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Unidade</th>
+                                        <th>Nome CFP</th>
+                                        <th>Telefone</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for cfp in cfps %}
+                                    <tr>
+                                        <td>{{ cfp.unidade_nome }}</td>
+                                        <td>{{ cfp.nome }}</td>
+                                        <td>{{ cfp.telefone or 'N/A' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <p class="text-center text-muted">Nenhum CFP cadastrado.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6 col-md-12 mb-4"> {# Card de Viaturas por Unidade #}
+                <div class="card" id="viaturas-por-unidade-card">
+                    <div class="card-header">
+                        Viaturas por Unidade
+                        <button class="btn btn-sm print-block-btn" onclick="printSection('viaturas-por-unidade-card')">Imprimir Bloco</button>
+                    </div>
+                    <div class="card-body">
+                        {% if viaturas_por_unidade %}
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Unidade</th>
+                                        <th>Quantidade</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in viaturas_por_unidade %}
+                                    <tr>
+                                        <td>{{ item.unidade_nome }}</td>
+                                        <td>{{ item.quantidade }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <p class="text-center text-muted">Nenhuma viatura por unidade.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# 3. Viaturas por Status e Totais de Viaturas (um do lado do outro) #}
+        <div class="row">
+            <div class="col-lg-6 col-md-12 mb-4"> {# Card de Viaturas por Status #}
+                <div class="card" id="viaturas-por-status-card">
+                    <div class="card-header">
+                        Viaturas por Status
+                        <button class="btn btn-sm print-block-btn" onclick="printSection('viaturas-por-status-card')">Imprimir Bloco</button>
+                    </div>
+                    <div class="card-body">
+                        {% if viaturas_por_status %}
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Quantidade</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in viaturas_por_status %}
+                                    <tr>
+                                        <td>{{ item.status }}</td>
+                                        <td>{{ item.quantidade }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <p class="text-center text-muted">Nenhuma viatura por status.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6 col-md-12 mb-4"> {# Card de Totais de Viaturas #}
+                <div class="card" id="totais-viaturas-card">
+                    <div class="card-header">
+                        Totais de Viaturas
+                        <button class="btn btn-sm print-block-btn" onclick="printSection('totais-viaturas-card')">Imprimir Bloco</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Categoria</th>
+                                        <th>Quantidade</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Capital+CFP+ADJCFP</td>
+                                        <td>{{ totais_viaturas.total_viaturas_geral }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Interior</td>
+                                        <td>{{ totais_viaturas.total_interior }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Moto</td>
+                                        <td>{{ totais_viaturas.total_motos }}</td>
+                                    </tr>
+                                    <tr class="total-geral-row">
+                                        <td><strong>Total Geral (Capital + Interior + Motos)</strong></td>
+                                        <td>{{ totais_viaturas.total_capital_interior_motos }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Soma Atendimento COPOM (FT, RP, Trânsito)</td>
+                                        <td>{{ totais_viaturas.soma_atendimento_copom }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# 4. Todas as Viaturas Cadastradas (sozinho - largura total) #}
+        <div class="card mt-4 mb-4" id="todas-viaturas-card">
+            <div class="card-header">
+                Todas as Viaturas Cadastradas
+                <button class="btn btn-sm print-block-btn" onclick="printSection('todas-viaturas-card')">Imprimir Bloco</button>
+            </div>
+            <div class="card-body">
+                {% if viaturas %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Unidade</th>
+                                <th>Prefixo</th>
+                                <th>Status</th>
+                                <th>Entrada</th>
+                                <th>Saída</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for viatura in viaturas %}
+                            {# Aplica a classe de cor baseada na unidade #}
+                            <tr class="{{ unit_color_map[viatura.unidade_nome] if viatura.unidade_nome in unit_color_map else '' }}">
+                                <td>{{ viatura.unidade_nome }}</td>
+                                <td>{{ viatura.prefixo }}</td>
+                                <td>{{ viatura.status }}</td>
+                                <td>{{ viatura.hora_entrada if viatura.hora_entrada else 'N/A' }}</td>
+                                <td>{{ viatura.hora_saida if viatura.hora_saida else 'N/A' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-center text-muted">Nenhuma viatura cadastrada.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {# Botões de Navegação e Impressão Global #}
+        <div class="container mt-4 mb-4 text-center global-controls-container">
+            <a href="/" class="btn btn-secondary me-2">Voltar à Página Inicial</a>
+            <button onclick="window.print()" class="btn btn-info">Imprimir Relatório Completo</button>
+            <a href="https://wa.me/?text=Confira%20o%20relatório%20de%20viaturas%20em%3A%20{{ request.url }}"
+               class="btn btn-success"
+               target="_blank"
+               rel="noopener noreferrer">
+                <i class="fab fa-whatsapp"></i> Compartilhar via WhatsApp
+            </a>
+        </div> {# Fechamento do container-fluid #}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function printSection(sectionId) {
+            // Esconde todos os cards e elementos globais
+            const allCards = document.querySelectorAll('.card');
+            const globalControls = document.querySelector('.global-controls-container');
+            const mainHeader = document.querySelector('h2');
+            const bodyElement = document.body;
+
+            // Adiciona classe para o corpo da página para controlar o overflow durante a impressão
+            bodyElement.classList.add('printing-active');
+
+            allCards.forEach(card => {
+                if (card.id !== sectionId) {
+                    card.classList.add('hide-for-print');
+                } else {
+                    card.classList.add('print-target'); // Adiciona uma classe para o card que será impresso
+                }
+            });
+
+            if (globalControls) globalControls.classList.add('hide-for-print');
+            if (mainHeader) mainHeader.classList.add('hide-for-print');
+
+            // Chamar a impressão
+            window.print();
+
+            // Restaurar a visibilidade após a impressão
+            window.onafterprint = function() {
+                allCards.forEach(card => {
+                    card.classList.remove('hide-for-print');
+                    card.classList.remove('print-target');
+                });
+                if (globalControls) globalControls.classList.remove('hide-for-print');
+                if (mainHeader) mainHeader.classList.remove('hide-for-print');
+                bodyElement.classList.remove('printing-active'); // Remove a classe do corpo
+                window.onafterprint = null; // Limpa a função para evitar execuções múltiplas
+            };
+        }
+    </script>
+</body>
+</html>

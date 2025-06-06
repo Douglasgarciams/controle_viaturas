@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Controle de Viaturas</title>
+</head>
+<body>
+    <h1>Controle de Viaturas</h1>
+
+    <!-- ✅ Mensagens -->
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul>
+          {% for message in messages %}
+            <li><strong>{{ message }}</strong></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <!-- 🔄 Seleção de Unidade -->
+    <form method="get" action="{{ url_for('cadastro_viaturas') }}">
+        <label>Unidade:</label>
+        <select name="unidade_id" onchange="this.form.submit()">
+            {% for u in unidades %}
+                <option value="{{ u.id }}" {% if u.id|string == unidade_id|string %}selected{% endif %}>{{ u.nome }}</option>
+            {% endfor %}
+        </select>
+    </form>
+
+    <hr>
+
+    <!-- 🚗 Cadastro de Viatura -->
+    <h2>Cadastrar Viatura - {{ unidade_selecionada }}</h2>
+    <form method="POST" action="{{ url_for('cadastrar_viatura') }}">
+        <input type="hidden" name="unidade" value="{{ unidade_selecionada }}">
+        Prefixo: <input type="text" name="prefixo" required>
+        Status:
+        <select name="status">
+            {% for s in status_possiveis %}
+                <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+        </select>
+        Hora Entrada: <input type="time" name="hora_entrada">
+        Hora Saída: <input type="time" name="hora_saida">
+        <button type="submit">Cadastrar</button>
+    </form>
+
+    <hr>
+
+    <!-- 📄 Lista de Viaturas -->
+    <h2>Viaturas da Unidade - {{ unidade_selecionada }}</h2>
+    <table border="1">
+        <tr>
+            <th>ID</th>
+            <th>Prefixo</th>
+            <th>Status</th>
+            <th>Hora Entrada</th>
+            <th>Hora Saída</th>
+            <th>Ações</th>
+        </tr>
+        {% for v in viaturas %}
+        <tr>
+            <form method="POST" action="{{ url_for('editar_viatura', id=v.id, unidade=unidade_selecionada) }}">
+                <td>{{ v.id }}</td>
+                <td><input type="text" name="prefixo" value="{{ v.prefixo }}" required></td>
+                <td>
+                    <select name="status">
+                        {% for s in status_possiveis %}
+                            <option value="{{ s }}" {% if s == v.status %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td><input type="time" name="hora_entrada" value="{{ v.hora_entrada }}"></td>
+                <td><input type="time" name="hora_saida" value="{{ v.hora_saida }}"></td>
+                <td>
+                    <button type="submit">Salvar</button>
+                    <a href="{{ url_for('excluir_viatura', id=v.id, unidade=unidade_selecionada) }}">Excluir</a>
+                </td>
+            </form>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <!-- CONTADOR logo abaixo da tabela -->
+    <p><strong>Total de Viaturas cadastradas: {{ viaturas|length }}</strong></p>
+
+    <hr>
+
+    <!-- ☎️ CFP e Telefone -->
+    <h2>CFP e Telefone</h2>
+    <form method="POST" action="{{ url_for('viaturas', unidade=unidade_selecionada) }}">
+        CFP: <input type="text" name="cfp" value="{{ cfp_telefone.cfp if cfp_telefone else '' }}">
+        Telefone: <input type="text" name="telefone" value="{{ cfp_telefone.telefone if cfp_telefone else '' }}">
+        <button type="submit">Salvar</button>
+    </form>
+
+</body>
+</html>

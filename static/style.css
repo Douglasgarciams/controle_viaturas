@@ -1,0 +1,246 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: #f4f4f4;
+    margin: 0;
+}
+
+header {
+    background-color: #003366;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+}
+
+header h1 {
+    text-align: center;
+    flex-grow: 1;
+    margin: 0 20px;
+    font-size: 18px;
+}
+
+header img {
+    height: 60px;
+}
+
+nav {
+    background-color: #004c99;
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    padding: 10px 0;
+}
+
+nav a {
+    color: white;
+    text-decoration: none;
+    padding: 10px 25px;
+    font-weight: bold;
+    border-radius: 8px;
+    background-color: #0059b3;
+    transition: 0.3s;
+}
+
+nav a:hover {
+    background-color: #003366;
+}
+
+main {
+    max-width: 900px;
+    margin: 30px auto;
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 0 12px rgba(0,0,0,0.2);
+}
+
+main h2 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: #003366;
+}
+
+form label {
+    display: block;
+    margin-top: 10px;
+    font-weight: bold;
+    color: #003366;
+}
+
+form input[type="text"],
+form input[type="time"],
+form select {
+    width: 100%;
+    padding: 10px;
+    margin-top: 6px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+}
+
+form button {
+    margin-top: 20px;
+    width: 100%;
+    background-color: #004c99;
+    color: white;
+    font-size: 16px;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+form button:hover {
+    background-color: #003366;
+}
+
+footer {
+    background-color: #003366;
+    color: white;
+    text-align: center;
+    padding: 10px 0;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+}
+
+@media (max-width: 600px) {
+    header h1 {
+        font-size: 14px;
+    }
+
+    nav a {
+        padding: 8px 15px;
+        font-size: 14px;
+    }
+
+    main {
+        margin: 20px;
+    }
+}
+/* Botões Modernos */
+button {
+    background-color: #003366;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 600;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+}
+
+button:hover {
+    background-color: #00509e;
+    transform: translateY(-2px);
+}
+
+button:active {
+    background-color: #002244;
+    transform: translateY(0);
+}
+
+button:disabled {
+    background-color: #ccc;
+    color: #666;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+@media print {
+    /* Esconde todos os elementos que têm a classe 'hide-for-print' */
+    .hide-for-print {
+        display: none !important;
+    }
+
+    /* Garante que o corpo da página tenha fundo branco e texto preto para impressão */
+    body {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        font-size: 10pt; /* Tamanho de fonte ajustado para impressão */
+        /* Se o footer estiver fixo na tela, ajuste aqui para que não se sobreponha */
+        position: static !important; /* Desabilita o fixed position para impressão */
+        bottom: auto !important;
+    }
+
+    /* Oculta o footer global da impressão, se ele estiver fixo ou no final da página */
+    footer {
+        display: none !important;
+    }
+
+    /* Oculta o header global da impressão, se você não quiser ele no cabeçalho impresso */
+    header {
+        display: none !important;
+    }
+
+    /* Oculta a navegação (navbar) global da impressão */
+    nav {
+        display: none !important;
+    }
+
+    /* Ajusta o contêiner principal da página (main) para não ter margens ou sombras na impressão */
+    main {
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        background: none !important; /* Remove fundo branco do main para evitar duplicidade */
+    }
+
+    /* Mostra e formata APENAS o bloco que deve ser impresso */
+    .print-target {
+        display: block !important;
+        visibility: visible !important;
+        position: relative !important; /* Reseta posições */
+        left: auto !important;
+        top: auto !important;
+        width: 100% !important;
+        margin: 0 auto !important;
+        padding: 15px !important;
+        box-shadow: none !important; /* Remove sombras que podem ficar estranhas na impressão */
+        page-break-inside: avoid; /* Tenta evitar quebras de página dentro do elemento alvo */
+    }
+
+    /* Garante que o conteúdo dentro do bloco alvo seja visível */
+    .print-target *, .print-target table, .print-target th, .print-target td {
+        visibility: visible !important;
+        background-color: #ffffff !important;
+        color: #000000 !important;
+    }
+
+    /* Ajustes para tabelas na impressão */
+    .table {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        --bs-table-bg: #ffffff !important;
+        --bs-table-striped-bg: #f2f2f2 !important; /* Fundo listrado claro */
+        --bs-table-striped-color: #000000 !important;
+        --bs-table-hover-bg: #e6e6e6 !important; /* Fundo hover claro */
+        --bs-table-hover-color: #000000 !important;
+        --bs-table-border-color: #dee2e6 !important;
+    }
+    .table th, .table td {
+        color: #000000 !important;
+        border-color: #dee2e6 !important;
+    }
+    .table thead {
+        display: table-header-group !important; /* Repete cabeçalho da tabela em cada página */
+    }
+    .table tbody tr {
+        page-break-inside: avoid !important; /* Tenta evitar quebras de página dentro de uma linha */
+    }
+
+    /* Esconde botões dentro do print-target se houver, para não imprimir os botões de ação na tabela */
+    .print-target .btn {
+        display: none !important;
+    }
+}
