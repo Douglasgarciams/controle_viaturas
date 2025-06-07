@@ -1,17 +1,19 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+import os
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
 from datetime import datetime, timedelta, time
 import mysql.connector
+import pandas as pd # Certifique-se de que pandas está importado
 
 app = Flask(__name__)
-app.secret_key = 'chave-secreta-qualquer' # Mantenha sua chave secreta aqui
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'co8bb9fffef7fe3f5892cfd83a5c36d71712e201c128be08b47c90f5589408ed82')
 
-# 🔗 Conexão com MySQL
+# 🔗 Conexão com MySQL (Agora usando variáveis de ambiente do Render)
 def get_db_connection():
     return mysql.connector.connect(
-        host='localhost',
-        user='root',
-        password='Reserva207*',
-        database='controle'
+        host=os.environ.get('DB_HOST'),
+        user=os.environ.get('DB_USER'),
+        password=os.environ.get('DB_PASSWORD'),
+        database=os.environ.get('DB_NAME')
     )
 
 # Função auxiliar para formatar minutos para HH:MM
@@ -57,6 +59,8 @@ STATUS_OPTIONS = [
     'JUIZADO', 'TRANSITO/BLITZ'
 ]
 
+# --- FUNÇÕES PARA GARANTIR QUE AS TABELAS EXISTAM (Adicionadas/Modificadas aqui) ---
+
 # Função para garantir que a tabela 'supervisores' exista e tenha uma entrada inicial
 def ensure_supervisores_table_and_initial_entry():
     conn = None
@@ -95,9 +99,118 @@ def ensure_supervisores_table_and_initial_entry():
         if conn and conn.is_connected():
             conn.close()
 
-ensure_supervisores_table_and_initial_entry()
+# NOVA: Função para garantir que a tabela 'unidades' exista
+def ensure_unidades_table():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS unidades (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                nome VARCHAR(100) NOT NULL UNIQUE
+            )
+        """)
+        conn.commit()
+        print("Tabela 'unidades' verificada/criada.")
+    except mysql.connector.Error as err:
+        print(f"Erro ao inicializar a tabela 'unidades': {err}")
+        if conn: conn.rollback()
+    finally:
+        if cursor: cursor.close()
+        if conn and conn.is_connected(): conn.close()
 
-# --- FIM DO NOVO CÓDIGO PARA SUPERVISORES ---
+# NOVA: Função para garantir que a tabela 'viaturas' exista
+def ensure_viaturas_table():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS viaturas (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                unidade_id INT NOT NULL,
+                prefixo VARCHAR(50) NOT NULL,
+                status VARCHAR(50) NOT NULL,
+                hora_entrada VARCHAR(5) DEFAULT NULL,
+                hora_saida VARCHAR(5) DEFAULT NULL,
+                FOREIGN KEY (unidade_id) REFERENCES unidades(id)
+            )
+        """)
+        conn.commit()
+        print("Tabela 'viaturas' verificada/criada.")
+    except mysql.connector.Error as err:
+        print(f"Erro ao inicializar a tabela 'viaturas': {err}")
+        if conn: conn.rollback()
+    finally:
+        if cursor: cursor.close()
+        if conn and conn.is_connected(): conn.close()
+
+# NOVA: Função para garantir que a tabela 'contatos' exista
+def ensure_contatos_table():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS contatos (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                unidade_id INT NOT NULL,
+                cfp VARCHAR(100) NOT NULL, -- Coluna para o nome do contato/CFP
+                telefone VARCHAR(20) DEFAULT NULL,
+                FOREIGN KEY (unidade_id) REFERENCES unidades(id)
+            )
+        """)
+        conn.commit()
+        print("Tabela 'contatos' verificada/criada.")
+    except mysql.connector.Error as err:
+        print(f"Erro ao inicializar a tabela 'contatos': {err}")
+        if conn: conn.rollback()
+    finally:
+        if cursor: cursor.close()
+        if conn and conn.is_connected(): conn.close()
+
+# NOVA: Função para garantir que a tabela 'ocorrencias_cepol' exista
+def ensure_ocorrencias_cepol_table():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ocorrencias_cepol (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                fato VARCHAR(255) NOT NULL,
+                status VARCHAR(50) NOT NULL,
+                protocolo VARCHAR(100) NOT NULL,
+                ro_cadg VARCHAR(100) NOT NULL,
+                chegada_delegacia VARCHAR(5) NOT NULL,
+                entrega_ro VARCHAR(5) NOT NULL,
+                saida_delegacia VARCHAR(5) NOT NULL,
+                tempo_total_dp VARCHAR(10),
+                tempo_entrega_dp VARCHAR(10),
+                data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        print("Tabela 'ocorrencias_cepol' verificada/criada.")
+    except mysql.connector.Error as err:
+        print(f"Erro ao inicializar a tabela 'ocorrencias_cepol': {err}")
+        if conn: conn.rollback()
+    finally:
+        if cursor: cursor.close()
+        if conn and conn.is_connected(): conn.close()
+
+# --- CHAMADAS DAS FUNÇÕES DE CRIAÇÃO DE TABELA ---
+# Certifique-se de que estas chamadas estão logo após a inicialização do app
+ensure_supervisores_table_and_initial_entry()
+ensure_unidades_table()
+ensure_viaturas_table()
+ensure_contatos_table()
+ensure_ocorrencias_cepol_table()
 
 
 # 🔵 Página principal (ROTA INDEX EXISTENTE, AGORA MODIFICADA PARA INCLUIR SUPERVISORES)
@@ -292,18 +405,6 @@ def cadastro_viaturas():
     )
 
 
-# Certifique-se de que pandas está importado no topo do seu app.py, junto com outros imports
-import pandas as pd
-# Certifique-se de que send_file do Flask também está importado
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
-
-
-# ... (seus outros imports)
-
-# ... (suas funções get_db_connection, format_minutes_to_hh_mm, ensure_hh_mm_format_for_display, etc.)
-
-# ... (suas rotas existentes)
-
 @app.route('/exportar_relatorio_excel')
 def exportar_relatorio_excel():
     conn = None
@@ -318,23 +419,23 @@ def exportar_relatorio_excel():
 
         if not ocorrencias:
             flash('Não há dados para exportar para Excel.', 'info')
-            return redirect(url_for('nome_da_sua_pagina_de_relatorio'))  # Redirecione para a sua página de relatório
+            return redirect(url_for('gerenciar_ocorrencias')) # Redirecione para a sua página de relatório
 
         # Converter a lista de dicionários em um DataFrame do pandas
         df = pd.DataFrame(ocorrencias)
 
         # Opcional: Renomear colunas para nomes mais amigáveis no Excel
         # df = df.rename(columns={
-        #     'fato': 'Fato da Ocorrência',
-        #     'status': 'Status da Ocorrência',
-        #     'protocolo': 'Número de Protocolo',
-        #     'ro_cadg': 'R.O. / CADG',
-        #     'chegada_delegacia': 'Chegada na Delegacia',
-        #     'entrega_ro': 'Entrega do R.O.',
-        #     'saida_delegacia': 'Saída da Delegacia',
-        #     'tempo_total_dp': 'Tempo Total na DP',
-        #     'tempo_entrega_dp': 'Tempo de Entrega do R.O. na DP',
-        #     'data_registro': 'Data de Registro'
+        #    'fato': 'Fato da Ocorrência',
+        #    'status': 'Status da Ocorrência',
+        #    'protocolo': 'Número de Protocolo',
+        #    'ro_cadg': 'R.O. / CADG',
+        #    'chegada_delegacia': 'Chegada na Delegacia',
+        #    'entrega_ro': 'Entrega do R.O.',
+        #    'saida_delegacia': 'Saída da Delegacia',
+        #    'tempo_total_dp': 'Tempo Total na DP',
+        #    'tempo_entrega_dp': 'Tempo de Entrega do R.O. na DP',
+        #    'data_registro': 'Data de Registro'
         # })
 
         # Definir o caminho para salvar o arquivo temporariamente
@@ -363,7 +464,7 @@ def exportar_relatorio_excel():
             conn.close()
 
     # Em caso de erro, redirecione para a página de relatório
-    return redirect(url_for('nome_da_sua_pagina_de_relatorio'))  # Mude para a rota da sua página de relatório
+    return redirect(url_for('gerenciar_ocorrencias')) # Mude para a rota da sua página de relatório
 
 @app.route('/editar_contato/<int:contato_id>', methods=['GET'])
 def editar_contato(contato_id):
@@ -743,17 +844,6 @@ def editar_ocorrencia(id):
 
     return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
 
-
-# Certifique-se de que todas as suas importações estejam no topo do arquivo
-from flask import Flask, render_template, request, redirect, url_for, flash
-import mysql.connector
-from datetime import datetime
-
-
-# (Seu código existente do Flask e MySQL aqui, incluindo app = Flask(__name__) e as configurações de DB)
-# ...
-
-# --- Rota para Relatórios (CORRIGIDA) ---
 # --- NOVA ROTA PARA RELATÓRIOS (CORRIGIDA) ---
 @app.route('/relatorios')
 def relatorios():
@@ -801,7 +891,7 @@ def relatorios():
         cursor.execute("""
                        SELECT c.id, c.unidade_id, c.cfp AS nome, c.telefone, u.nome AS unidade_nome
                        FROM contatos c
-                                JOIN unidades u ON c.unidade_id = u.id
+                       JOIN unidades u ON c.unidade_id = u.id
                        ORDER BY u.nome, c.cfp
                        """)
         cfps_data = cursor.fetchall()
@@ -810,7 +900,7 @@ def relatorios():
         cursor.execute("""
                        SELECT v.*, u.nome AS unidade_nome
                        FROM viaturas v
-                                JOIN unidades u ON v.unidade_id = u.id
+                       JOIN unidades u ON v.unidade_id = u.id
                        ORDER BY u.nome, v.prefixo
                        """)
         viaturas_data = cursor.fetchall()
@@ -819,84 +909,50 @@ def relatorios():
         cursor.execute("""
                        SELECT u.nome AS unidade_nome, COUNT(v.id) AS quantidade
                        FROM viaturas v
-                                JOIN unidades u ON v.unidade_id = u.id
+                       JOIN unidades u ON v.unidade_id = u.id
                        GROUP BY u.nome
                        ORDER BY u.nome
                        """)
         viaturas_por_unidade = cursor.fetchall()
 
-        # 5. Quantidade de Viaturas por Status
-        cursor.execute("""
-                       SELECT status, COUNT(id) AS quantidade
-                       FROM viaturas
-                       GROUP BY status
-                       ORDER BY status
-                       """)
-        viaturas_por_status = cursor.fetchall()
+        # 5. Quantidade de Viaturas por Status (Corrigido para usar os STATUS_OPTIONS)
+        viaturas_por_status_raw = {}
+        for status_opt in STATUS_OPTIONS:
+            cursor.execute("SELECT COUNT(*) as quantidade FROM viaturas WHERE status = %s", (status_opt,))
+            count = cursor.fetchone()['quantidade']
+            viaturas_por_status_raw[status_opt] = count
 
-        # 6. Tabela Específica para Funções de Viaturas (totais por tipo, baseado em STATUS)
-        cursor.execute("""
-                       SELECT SUM(CASE
-                                      WHEN status IN
-                                           ('ADM', 'CFP', 'FORÇA TATICA', 'RP', 'TRANSITO', 'ADJ CFP', 'INTERIOR',
-                                            'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO',
-                                            'JUIZADO', 'TRANSITO/BLITZ') THEN 1
-                                      ELSE 0 END)                                                           AS total_viaturas_geral,
-                              SUM(CASE WHEN status = 'INTERIOR' THEN 1 ELSE 0 END)                          AS total_interior,
-                              SUM(CASE WHEN status = 'MOTO' THEN 1 ELSE 0 END)                              AS total_motos, -- Consistente com 'MOTO' na STATUS_OPTIONS, se for 'moto' no DB, ajuste aqui
-                              SUM(CASE WHEN status IN ('FORÇA TATICA', 'RP', 'TRANSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
-                       FROM viaturas;
-                       """)
-        totais_viaturas_row = cursor.fetchone()
+        # Convertendo para lista de dicionários para facilitar no template
+        viaturas_por_status = [{"status": s, "quantidade": q} for s, q in viaturas_por_status_raw.items()]
 
-        # Calcular a soma total de CAPITAL + INTERIOR + MOTOS no Python
-        if totais_viaturas_row:
-            totais_viaturas = {
-                'total_viaturas_geral': totais_viaturas_row['total_viaturas_geral'],
-                'total_interior': totais_viaturas_row['total_interior'],
-                'total_motos': totais_viaturas_row['total_motos'],
-                'soma_atendimento_copom': totais_viaturas_row['soma_atendimento_copom']
-            }
-            # Adiciona a soma no dicionário
-            totais_viaturas['total_capital_interior_motos'] = (
-                    totais_viaturas_row['total_viaturas_geral'] +
-                    totais_viaturas_row['total_interior'] +
-                    totais_viaturas_row['total_motos']
-            )
-        else:
-            # Caso não haja viaturas, inicializa com zeros
-            totais_viaturas = {
-                'total_viaturas_geral': 0, 'total_interior': 0, 'total_motos': 0,
-                'soma_atendimento_copom': 0, 'total_capital_interior_motos': 0
-            }
+        # 6. Totais de Viaturas (total geral, total em operação, total em manutenção)
+        cursor.execute("SELECT COUNT(*) AS total_geral FROM viaturas")
+        totais_viaturas['total_geral'] = cursor.fetchone()['total_geral']
+
+        cursor.execute("SELECT COUNT(*) AS em_operacao FROM viaturas WHERE status IN ('RP', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ', 'FORÇA TATICA', 'TRANSITO')") # Adicione todos os status que significam "em operação"
+        totais_viaturas['em_operacao'] = cursor.fetchone()['em_operacao']
+
+        cursor.execute("SELECT COUNT(*) AS em_manutencao FROM viaturas WHERE status IN ('ADM', 'CFP', 'ADJ CFP', 'INTERIOR')") # Adicione todos os status que significam "em manutenção"
+        totais_viaturas['em_manutencao'] = cursor.fetchone()['em_manutencao']
+
 
     except mysql.connector.Error as err:
-        flash(f"Erro no banco de dados ao carregar relatórios: {err}", 'danger')
-        # Em caso de erro, inicializa todas as variáveis para evitar "NameError" no template
-        supervisores_string = "Erro ao carregar supervisores."
-        cfps_data = []
-        viaturas_data = []
-        viaturas_por_unidade = []
-        viaturas_por_status = []
-        totais_viaturas = {}
+        flash(f"Database error in reports: {err}", 'danger')
+    except Exception as e:
+        flash(f"An unexpected error occurred in reports: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
         if conn:
             conn.close()
 
-    # FINAL DA FUNÇÃO: Retorna o template com TODAS as variáveis
     return render_template('relatorios.html',
                            supervisores_string=supervisores_string,
-                           cfps=cfps_data,  # Renomeado para 'cfps' para o template
-                           viaturas=viaturas_data,
+                           cfps_data=cfps_data,
+                           viaturas_data=viaturas_data,
                            viaturas_por_unidade=viaturas_por_unidade,
                            viaturas_por_status=viaturas_por_status,
                            totais_viaturas=totais_viaturas)
 
-
-# ... (restante do seu app.py, incluindo app.run(debug=True)
-
-# ESTE BLOCO DEVE ESTAR NO FINAL DO SEU ARQUIVO
 if __name__ == '__main__':
     app.run(debug=True)
