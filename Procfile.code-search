@@ -1,5 +1,0 @@
-# Query: Procfile
-# ContextLines: 1
-
-No Results
-web: gunicorn app:app --log-file - --timeout 120

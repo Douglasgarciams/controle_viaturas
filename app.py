@@ -1,19 +1,21 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
 from datetime import datetime, timedelta, time
-import mysql.connector
-import pandas as pd # Certifique-se de que pandas está importado
+import psycopg2 # AGORA USANDO PSYCOPG2
+import psycopg2.extras # PARA CURSORES DE DICIONÁRIO
+import pandas as pd
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'co8bb9fffef7fe3f5892cfd83a5c36d71712e201c128be08b47c90f5589408ed82')
 
-# 🔗 Conexão com MySQL (Agora usando variáveis de ambiente do Render)
+# 🔗 Conexão com PostgreSQL
 def get_db_connection():
-    return mysql.connector.connect(
+    return psycopg2.connect(
         host=os.environ.get('DB_HOST'),
         user=os.environ.get('DB_USER'),
         password=os.environ.get('DB_PASSWORD'),
-        database=os.environ.get('DB_NAME')
+        database=os.environ.get('DB_NAME'),
+        port=os.environ.get('DB_PORT', '5432') # Porta padrão do PostgreSQL
     )
 
 # Função auxiliar para formatar minutos para HH:MM
@@ -59,7 +61,7 @@ STATUS_OPTIONS = [
     'JUIZADO', 'TRANSITO/BLITZ'
 ]
 
-# --- FUNÇÕES PARA GARANTIR QUE AS TABELAS EXISTAM (Adicionadas/Modificadas aqui) ---
+# --- FUNÇÕES PARA GARANTIR QUE AS TABELAS EXISTAM (Modificadas para PostgreSQL) ---
 
 # Função para garantir que a tabela 'supervisores' exista e tenha uma entrada inicial
 def ensure_supervisores_table_and_initial_entry():
@@ -67,36 +69,36 @@ def ensure_supervisores_table_and_initial_entry():
     cursor = None
     try:
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor() # Não precisa de dictionary=True aqui, usaremos cursor_factory no connect
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS supervisores (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY, -- ALTERADO: AUTO_INCREMENT para SERIAL
                 supervisor_operacoes VARCHAR(100) DEFAULT '',
                 coordenador VARCHAR(100) DEFAULT '',
                 supervisor_despacho VARCHAR(100) DEFAULT '',
                 supervisor_atendimento VARCHAR(100) DEFAULT '',
-                last_updated DATETIME
+                last_updated TIMESTAMP WITH TIME ZONE -- ALTERADO: DATETIME para TIMESTAMP WITH TIME ZONE
             )
         """)
         conn.commit()
         cursor.execute("SELECT COUNT(*) FROM supervisores")
         if cursor.fetchone()[0] == 0:
             cursor.execute("""
-                INSERT INTO supervisores (id, supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento, last_updated)
-                VALUES (1, '', '', '', '', NOW())
-            """)
+                INSERT INTO supervisores (supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento, last_updated)
+                VALUES (%s, %s, %s, %s, NOW()) -- id é SERIAL, não precisa ser incluído no INSERT
+            """, ('', '', '', '')) # Valores vazios para a entrada inicial
             conn.commit()
             print("Entrada inicial para a tabela 'supervisores' criada com sucesso.")
         else:
             print("Tabela 'supervisores' já existe e possui entradas.")
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO: mysql.connector.Error para psycopg2.Error
         print(f"Erro ao inicializar a tabela 'supervisores': {err}")
         if conn:
             conn.rollback()
     finally:
         if cursor:
             cursor.close()
-        if conn and conn.is_connected():
+        if conn and not conn.closed: # ALTERADO: conn.is_connected() para not conn.closed
             conn.close()
 
 # NOVA: Função para garantir que a tabela 'unidades' exista
@@ -108,18 +110,18 @@ def ensure_unidades_table():
         cursor = conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS unidades (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY, -- ALTERADO: AUTO_INCREMENT para SERIAL
                 nome VARCHAR(100) NOT NULL UNIQUE
             )
         """)
         conn.commit()
         print("Tabela 'unidades' verificada/criada.")
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err:
         print(f"Erro ao inicializar a tabela 'unidades': {err}")
         if conn: conn.rollback()
     finally:
         if cursor: cursor.close()
-        if conn and conn.is_connected(): conn.close()
+        if conn and not conn.closed: conn.close()
 
 # NOVA: Função para garantir que a tabela 'viaturas' exista
 def ensure_viaturas_table():
@@ -130,7 +132,7 @@ def ensure_viaturas_table():
         cursor = conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS viaturas (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY, -- ALTERADO: AUTO_INCREMENT para SERIAL
                 unidade_id INT NOT NULL,
                 prefixo VARCHAR(50) NOT NULL,
                 status VARCHAR(50) NOT NULL,
@@ -141,12 +143,12 @@ def ensure_viaturas_table():
         """)
         conn.commit()
         print("Tabela 'viaturas' verificada/criada.")
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err:
         print(f"Erro ao inicializar a tabela 'viaturas': {err}")
         if conn: conn.rollback()
     finally:
         if cursor: cursor.close()
-        if conn and conn.is_connected(): conn.close()
+        if conn and not conn.closed: conn.close()
 
 # NOVA: Função para garantir que a tabela 'contatos' exista
 def ensure_contatos_table():
@@ -157,7 +159,7 @@ def ensure_contatos_table():
         cursor = conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS contatos (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY, -- ALTERADO: AUTO_INCREMENT para SERIAL
                 unidade_id INT NOT NULL,
                 cfp VARCHAR(100) NOT NULL, -- Coluna para o nome do contato/CFP
                 telefone VARCHAR(20) DEFAULT NULL,
@@ -166,12 +168,12 @@ def ensure_contatos_table():
         """)
         conn.commit()
         print("Tabela 'contatos' verificada/criada.")
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err:
         print(f"Erro ao inicializar a tabela 'contatos': {err}")
         if conn: conn.rollback()
     finally:
         if cursor: cursor.close()
-        if conn and conn.is_connected(): conn.close()
+        if conn and not conn.closed: conn.close()
 
 # NOVA: Função para garantir que a tabela 'ocorrencias_cepol' exista
 def ensure_ocorrencias_cepol_table():
@@ -182,7 +184,7 @@ def ensure_ocorrencias_cepol_table():
         cursor = conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS ocorrencias_cepol (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY, -- ALTERADO: AUTO_INCREMENT para SERIAL
                 fato VARCHAR(255) NOT NULL,
                 status VARCHAR(50) NOT NULL,
                 protocolo VARCHAR(100) NOT NULL,
@@ -192,20 +194,19 @@ def ensure_ocorrencias_cepol_table():
                 saida_delegacia VARCHAR(5) NOT NULL,
                 tempo_total_dp VARCHAR(10),
                 tempo_entrega_dp VARCHAR(10),
-                data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP -- ALTERADO: DATETIME para TIMESTAMP
             )
         """)
         conn.commit()
         print("Tabela 'ocorrencias_cepol' verificada/criada.")
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err:
         print(f"Erro ao inicializar a tabela 'ocorrencias_cepol': {err}")
         if conn: conn.rollback()
     finally:
         if cursor: cursor.close()
-        if conn and conn.is_connected(): conn.close()
+        if conn and not conn.closed: conn.close()
 
 # --- CHAMADAS DAS FUNÇÕES DE CRIAÇÃO DE TABELA ---
-# Certifique-se de que estas chamadas estão logo após a inicialização do app
 ensure_supervisores_table_and_initial_entry()
 ensure_unidades_table()
 ensure_viaturas_table()
@@ -230,7 +231,7 @@ def index():
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor) # Para obter dicionários
 
         # --- Lógica de POST para Supervisores ---
         if request.method == 'POST' and 'supervisorOperacoes' in request.form:
@@ -300,7 +301,7 @@ def index():
         """)
         contatos = cursor.fetchall() # Alterado de 'cfps' para 'contatos'
 
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO: mysql.connector.Error para psycopg2.Error
         flash(f"Database error: {err}", 'danger')
         unidades = []
         viaturas = []
@@ -308,13 +309,13 @@ def index():
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed: # ALTERADO: conn.is_connected() para not conn.closed
             conn.close()
 
     return render_template('index.html', unidades=unidades, status_options=STATUS_OPTIONS,
                            viaturas=viaturas, contatos=contatos, supervisores=supervisores_data) # Alterado de 'cfps' para 'contatos'
 
-# 🚗 Cadastro de viaturas (SEU CÓDIGO EXISTENTE - NÃO ALTERADO)
+# 🚗 Cadastro de viaturas (SEU CÓDIGO EXISTENTE - NÃO ALTERADO, EXCETO TRATAMENTO DE ERROS)
 @app.route('/cadastro_viaturas', methods=['GET', 'POST'])
 def cadastro_viaturas():
     conn = None
@@ -327,7 +328,7 @@ def cadastro_viaturas():
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         if request.method == 'POST':
             unidade_id = request.form['unidade_id']
@@ -387,12 +388,12 @@ def cadastro_viaturas():
         """)
         contatos = cursor.fetchall()
 
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO: mysql.connector.Error para psycopg2.Error
         flash(f"Database error loading vehicles: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed:
             conn.close()
 
     return render_template(
@@ -411,7 +412,7 @@ def exportar_relatorio_excel():
     cursor = None
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)  # Retorna dicionários para fácil conversão em DataFrame
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)  # Retorna dicionários para fácil conversão em DataFrame
 
         # Exemplo: Buscar todas as ocorrências. Ajuste esta query se o seu relatório for diferente.
         cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY data_registro DESC")
@@ -453,14 +454,14 @@ def exportar_relatorio_excel():
                          as_attachment=True,
                          download_name='relatorio_ocorrencias_cepol.xlsx')
 
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO
         flash(f"Erro no banco de dados ao exportar: {err}", 'danger')
     except Exception as e:
         flash(f"Ocorreu um erro inesperado ao exportar: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed:
             conn.close()
 
     # Em caso de erro, redirecione para a página de relatório
@@ -473,15 +474,15 @@ def editar_contato(contato_id):
     contato = None
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cursor.execute("SELECT * FROM contatos WHERE id = %s", (contato_id,))
         contato = cursor.fetchone()
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO
         flash(f"Database error: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed:
             conn.close()
 
     if contato is None:
@@ -510,12 +511,12 @@ def editar_contato_post(contato_id):
 
         conn.commit()
         flash('Contato atualizado com sucesso!', 'success')
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO
         flash(f"Database error updating contact: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed:
             conn.close()
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
@@ -542,12 +543,12 @@ def adicionar_contato():
 
         conn.commit()
         flash('Contato cadastrado com sucesso!', 'success')
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO
         flash(f"Database error adding contact: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed:
             conn.close()
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
@@ -561,7 +562,7 @@ def excluir_contato(contato_id):
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         cursor.execute("SELECT unidade_id FROM contatos WHERE id = %s", (contato_id,))
         contato = cursor.fetchone()
@@ -570,12 +571,12 @@ def excluir_contato(contato_id):
         cursor.execute("DELETE FROM contatos WHERE id = %s", (contato_id,))
         conn.commit()
         flash('Contato excluído com sucesso!', 'success')
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO
         flash(f'Database error deleting contact: {err}', 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed:
             conn.close()
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
@@ -589,7 +590,7 @@ def excluir_viatura(viatura_id):
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         cursor.execute("SELECT unidade_id FROM viaturas WHERE id = %s", (viatura_id,))
         viatura = cursor.fetchone()
@@ -603,12 +604,12 @@ def excluir_viatura(viatura_id):
         cursor.execute("DELETE FROM viaturas WHERE id = %s", (viatura_id,))
         conn.commit()
         flash('Viatura excluída com sucesso!', 'success')
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO
         flash(f'Database error deleting vehicle: {err}', 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed:
             conn.close()
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
@@ -624,7 +625,7 @@ def editar_viatura(viatura_id):
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         if request.method == 'POST':
             unidade_id_for_redirect = request.form['unidade_id']
@@ -654,12 +655,12 @@ def editar_viatura(viatura_id):
         cursor.execute("SELECT id, nome FROM unidades")
         unidades = cursor.fetchall()
 
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO
         flash(f"Database error editing vehicle: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed:
             conn.close()
 
     if viatura:
@@ -679,7 +680,7 @@ def gerenciar_ocorrencias():
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         if request.method == 'POST':
             fato = request.form.get('fato', '').strip()
@@ -729,14 +730,14 @@ def gerenciar_ocorrencias():
         cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY id DESC")
         ocorrencias = cursor.fetchall()
 
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO
         flash(f"Erro no banco de dados ao gerenciar ocorrências: {err}", 'danger')
     except Exception as e:
         flash(f"Ocorreu um erro inesperado: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed:
             conn.close()
 
     return render_template('ocorrencias_cepol.html', ocorrencias=ocorrencias)
@@ -753,14 +754,14 @@ def excluir_ocorrencia(id):
         cursor.execute("DELETE FROM ocorrencias_cepol WHERE id = %s", (id,))
         conn.commit()
         flash('Ocorrência excluída com sucesso!', 'success')
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO
         flash(f'Erro ao excluir ocorrência: {err}', 'danger')
     except Exception as e:
         flash(f'Ocorreu um erro inesperado ao excluir: {e}', 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed:
             conn.close()
     return redirect(url_for('gerenciar_ocorrencias'))
 
@@ -772,7 +773,7 @@ def editar_ocorrencia(id):
     ocorrencia = None
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         if request.method == 'POST':
             fato = request.form.get('fato', '').strip()
@@ -832,14 +833,14 @@ def editar_ocorrencia(id):
         ocorrencia['entrega_ro'] = ensure_hh_mm_format_for_display(ocorrencia.get('entrega_ro'))
         ocorrencia['saida_delegacia'] = ensure_hh_mm_format_for_display(ocorrencia.get('saida_delegacia'))
 
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO
         flash(f"Erro no banco de dados ao carregar/atualizar: {err}", 'danger')
     except Exception as e:
         flash(f"Ocorreu um erro inesperado: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed:
             conn.close()
 
     return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
@@ -860,7 +861,7 @@ def relatorios():
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         # 1. Supervisores de Serviço (para exibição em uma única linha no relatório)
         cursor.execute("""
@@ -936,14 +937,14 @@ def relatorios():
         totais_viaturas['em_manutencao'] = cursor.fetchone()['em_manutencao']
 
 
-    except mysql.connector.Error as err:
+    except psycopg2.Error as err: # ALTERADO
         flash(f"Database error in reports: {err}", 'danger')
     except Exception as e:
         flash(f"An unexpected error occurred in reports: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
+        if conn and not conn.closed:
             conn.close()
 
     return render_template('relatorios.html',
