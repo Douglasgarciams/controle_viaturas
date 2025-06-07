@@ -101,8 +101,8 @@ def ensure_supervisores_table_and_initial_entry():
         if conn and not conn.closed: # ALTERADO: conn.is_connected() para not conn.closed
             conn.close()
 
-# NOVA: Função para garantir que a tabela 'unidades' exista
-def ensure_unidades_table():
+# NOVA: Função para garantir que a tabela 'unidades' exista (e inserir dados iniciais)
+def ensure_unidades_table_and_initial_entries():
     conn = None
     cursor = None
     try:
@@ -110,18 +110,36 @@ def ensure_unidades_table():
         cursor = conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS unidades (
-                id SERIAL PRIMARY KEY, -- ALTERADO: AUTO_INCREMENT para SERIAL
+                id SERIAL PRIMARY KEY,
                 nome VARCHAR(100) NOT NULL UNIQUE
             )
         """)
         conn.commit()
         print("Tabela 'unidades' verificada/criada.")
+
+        # Inserir unidades iniciais se a tabela estiver vazia
+        cursor.execute("SELECT COUNT(*) FROM unidades")
+        if cursor.fetchone()[0] == 0:
+            unidades_iniciais = [
+                ('1º BPM',),
+                ('9º BPM',),
+                ('10º BPM',),
+                ('Batalhão X',), # Exemplo
+                ('Batalhão Y',)  # Exemplo
+            ]
+            cursor.executemany("INSERT INTO unidades (nome) VALUES (%s)", unidades_iniciais)
+            conn.commit()
+            print("Unidades iniciais inseridas com sucesso.")
+        else:
+            print("Tabela 'unidades' já possui entradas.")
+
     except psycopg2.Error as err:
         print(f"Erro ao inicializar a tabela 'unidades': {err}")
         if conn: conn.rollback()
     finally:
         if cursor: cursor.close()
         if conn and not conn.closed: conn.close()
+
 
 # NOVA: Função para garantir que a tabela 'viaturas' exista
 def ensure_viaturas_table():
@@ -208,7 +226,7 @@ def ensure_ocorrencias_cepol_table():
 
 # --- CHAMADAS DAS FUNÇÕES DE CRIAÇÃO DE TABELA ---
 ensure_supervisores_table_and_initial_entry()
-ensure_unidades_table()
+ensure_unidades_table_and_initial_entries() # <-- CHAME A NOVA FUNÇÃO AQUI!
 ensure_viaturas_table()
 ensure_contatos_table()
 ensure_ocorrencias_cepol_table()
@@ -712,6 +730,7 @@ def gerenciar_ocorrencias():
             tempo_total_min = int((saida_dt - chegada_dt).total_seconds() // 60)
             tempo_entrega_min = int((entrega_dt - chegada_dt).total_seconds() // 60)
 
+            # A FUNÇÃO 'format_minutes_to_hh_mm' JÁ ESTÁ DEFINIDA NO TOPO
             tempo_total_dp = format_minutes_to_hh_mm(tempo_total_min)
             tempo_entrega_dp = format_minutes_to_hh_mm(tempo_entrega_min)
 
