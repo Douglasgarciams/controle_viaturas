@@ -429,6 +429,12 @@ def exportar_relatorio_excel():
             flash('Não há dados para exportar para Excel.', 'info')
             return redirect(url_for('gerenciar_ocorrencias'))
 
+        # --- A CORREÇÃO ESTÁ AQUI: CONVERTER PARA DATAFRAME ---
+        # Convert list of dict-like rows to a list of dicts, then to DataFrame
+        ocorrencias_dicts = [dict(row) for row in ocorrencias]
+        df = pd.DataFrame(ocorrencias_dicts)
+        # --- FIM DA CORREÇÃO ---
+
         from io import BytesIO
         output = BytesIO()
         writer = pd.ExcelWriter(output, engine='openpyxl')
