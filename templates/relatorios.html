@@ -417,11 +417,9 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Dados de viaturas por status vindos do backend (ex: Flask/Jinja2)
-        // Certifique-se que 'viaturas_por_status' seja uma lista de objetos no Python,
-        // e que a serialização para JSON seja feita ANTES de passar para o template.
-        // Exemplo em Flask: return render_template('relatorio.html', viaturas_por_status=json.dumps(viaturas_por_status_data))
-        // E no template Jinja2: const viaturasPorStatusData = {{ viaturas_por_status | safe }};
-        const viaturasPorStatusData = {{ viaturas_por_status | tojson | safe }};
+        // CRÍTICO: Use JSON.parse() para garantir que a string JSON seja convertida em um array de objetos JavaScript.
+        // A variável 'viaturas_por_status' já deve ser uma string JSON válida do seu backend (via json.dumps()).
+        const viaturasPorStatusData = JSON.parse('{{ viaturas_por_status | safe }}');
 
         function calculateAndDisplayTotals() {
             let totalCapitalCfpAdjCfp = 0;
@@ -436,11 +434,20 @@
             });
 
             // Soma para 'Capital+CFP+ADJCFP'
-            // Assumo que 'Capital' e 'ADJCFP' podem ser outros status ou combinados
-            // Se eles não existirem como status separados, o valor será 0.
-            totalCapitalCfpAdjCfp = (statusMap['CFP'] || 0); 
-            // Exemplo: se 'Capital' e 'ADJCFP' fossem status também, você faria:
-            // totalCapitalCfpAdjCfp += (statusMap['Capital'] || 0) + (statusMap['ADJCFP'] || 0);
+            // Use os nomes de status exatamente como estão no seu DB/Python
+            totalCapitalCfpAdjCfp = (statusMap['CFP'] || 0) +
+                                    (statusMap['ADJ CFP'] || 0) +
+                                    (statusMap['FORÇA TATICA'] || 0) +
+                                    (statusMap['RP'] || 0) +
+                                    (statusMap['TRANSITO'] || 0) +
+                                    (statusMap['ROTAC'] || 0) +
+                                    (statusMap['CANIL'] || 0) +
+                                    (statusMap['BOPE'] || 0) +
+                                    (statusMap['ESCOLAR/PROMUSE'] || 0) +
+                                    (statusMap['POL.COMUNITARIO'] || 0) +
+                                    (statusMap['JUIZADO'] || 0) +
+                                    (statusMap['TRANSITO/BLITZ'] || 0) +
+                                    (statusMap['ADM'] || 0); // ADM também está incluído na sua lógica do Python
 
             // Soma para 'Interior'
             totalInterior = (statusMap['INTERIOR'] || 0);
@@ -449,17 +456,20 @@
             totalMotos = (statusMap['MOTO'] || 0);
 
             // Soma para 'Soma Atendimento COPOM (FT, RP, Trânsito)'
-            somaAtendimentoCopom = (statusMap['FORÇATÁTICA'] || 0) + (statusMap['RP'] || 0) + (statusMap['TRÂNSITO'] || 0);
+            // Use os nomes de status exatamente como estão no seu DB/Python
+            somaAtendimentoCopom = (statusMap['FORÇA TATICA'] || 0) + (statusMap['RP'] || 0) + (statusMap['TRANSITO'] || 0);
 
-            // Calcula o Total Geral (Capital + Interior + Motos)
-            // Se 'Capital+CFP+ADJCFP' for a soma total de Capital, CFP e ADJCFP (mesmo que alguns sejam 0)
-            const totalGeral = totalCapitalCfpAdjCfp + totalInterior + totalMotos;
+            // Calcula o Total Geral (Este é o total de todos os status na sua lista, que deve ser o mesmo que `totais_viaturas['total_geral']` do Python)
+            let totalGeralCalculado = 0;
+            viaturasPorStatusData.forEach(item => {
+                totalGeralCalculado += item.quantidade;
+            });
 
             // Preenche os campos no HTML
             document.getElementById('total-capital-cfp-adjcfp').textContent = totalCapitalCfpAdjCfp;
             document.getElementById('total-interior').textContent = totalInterior;
             document.getElementById('total-moto').textContent = totalMotos;
-            document.getElementById('total-geral').textContent = totalGeral;
+            document.getElementById('total-geral').textContent = totalGeralCalculado; // Use o total calculado a partir dos dados do JS
             document.getElementById('soma-copom').textContent = somaAtendimentoCopom;
         }
 
