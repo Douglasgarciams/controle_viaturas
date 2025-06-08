@@ -827,27 +827,48 @@ def editar_ocorrencia(id):
 
     return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
 
+import psycopg2
+import psycopg2.extras
+import json # Adicione esta importação para json.dumps
+
+# Supondo que 'get_db_connection' e 'app' já estão definidos em seu app.py
+# Exemplo básico, ajuste conforme sua configuração real
+from flask import Flask, render_template, request, redirect, url_for, flash # Removi jsonify pois não estava sendo usado no seu trecho
+
+# APENAS PARA EXEMPLIFICAR A ROTA DE RELATÓRIOS.
+# VOCÊ DEVE TER SEU 'app' e 'get_db_connection' DEFINIDOS ANTES.
+# Se já tiver isso, IGNORE essas linhas de exemplo.
+# --- EXEMPO DE COMO PODERIAM SER DEFINIDOS (NÃO COPIE SE JÁ TIVER) ---
+# app = Flask(__name__)
+# app.secret_key = 'sua_chave_secreta_muito_secreta' # Substitua por uma chave segura
+# DATABASE_URL = "postgres://user:pass@host:port/dbname" # Substitua pela sua URL de conexão REAL
+# def get_db_connection():
+#     return psycopg2.connect(DATABASE_URL)
+# --- FIM DO EXEMPLO ---
+
+
 @app.route('/relatorios')
 def relatorios():
     conn = None
     cursor = None
 
     supervisores_string = ""
-    cfps_data = []
-    viaturas_data = []
-    viaturas_por_unidade = []
-    viaturas_por_status = []
-    totais_viaturas = {}
+    cfps_data = [] # Mapeia para 'cfps' no HTML
+    viaturas_data = [] # Mapeia para 'viaturas' no HTML
+    viaturas_por_unidade_data = [] # Mapeia para 'viaturas_por_unidade' no HTML
+    viaturas_por_status_data = [] # Mapeia para 'viaturas_por_status' no HTML (via json.dumps)
+    totais_viaturas_data = {} # Mapeia para 'totais_viaturas' no HTML
+    unit_color_map = {} # Deixando vazio, pois você não o enviou e não o quer.
 
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         cursor.execute("""
-                                SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento
-                                FROM supervisores
-                                WHERE id = 1
-                                """)
+            SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento
+            FROM supervisores
+            WHERE id = 1
+        """)
         supervisores_db_row = cursor.fetchone()
 
         if supervisores_db_row:
@@ -865,50 +886,119 @@ def relatorios():
             else:
                 pass # This 'pass' was from your original code, left for consistency.
                      # If you want to handle the case where all supervisor fields are empty, you can add logic here.
-                
-        # --- Continue com o restante da rota /relatorios, que foi cortada no seu envio ---
-        # Eu completei a parte que você mandou, o resto do código da rota /relatorios viria aqui.
-        # Por exemplo:
-        # cursor.execute("""
-        #    SELECT u.nome AS unidade_nome, c.cfp, c.telefone
-        #    FROM contatos c
-        #    JOIN unidades u ON c.unidade_id = u.id
-        #    ORDER BY u.nome, c.cfp
-        # """)
-        # cfps_data = cursor.fetchall()
-        #
-        # # ... e assim por diante para viaturas_data, viaturas_por_unidade, etc.
-        #
-        # return render_template('relatorios.html',
-        #                        supervisores_string=supervisores_string,
-        #                        cfps_data=cfps_data,
-        #                        viaturas_data=viaturas_data,
-        #                        viaturas_por_unidade=viaturas_por_unidade,
-        #                        viaturas_por_status=viaturas_por_status,
-        #                        totais_viaturas=totais_viaturas)
-        #
-        # No entanto, como você me enviou apenas uma parte final da rota /relatorios,
-        # vou te devolver o que você me enviou com a correção no exportar_relatorio_excel
-        # e a pequena adição de "pass" que faltava no seu if/else.
-        # Se precisar do restante da rota de relatórios, por favor me envie.
+
+        # --- AQUI VOCÊ ADICIONARIA O RESTANTE DAS CONSULTAS SQL PARA AS OUTRAS VARIÁVEIS ---
+        # Exemplo (você precisa preencher com suas consultas REAIS para cada uma):
+
+        # Consulta para cfps_data (usado como 'cfps' no HTML)
+        cursor.execute("""
+            SELECT u.nome AS unidade_nome, c.cfp_nome, c.telefone
+            FROM contatos c
+            JOIN unidades u ON c.unidade_id = u.id
+            ORDER BY u.nome, c.cfp_nome
+        """)
+        cfps_data = cursor.fetchall()
+
+
+        # Consulta para viaturas_data (usado como 'viaturas' no HTML)
+        # Ajuste as colunas conforme seu esquema de banco de dados
+        cursor.execute("""
+            SELECT v.prefixo, v.status, u.nome AS unidade_nome,
+                   TO_CHAR(v.hora_entrada, 'HH24:MI') AS hora_entrada,
+                   TO_CHAR(v.hora_saida, 'HH24:MI') AS hora_saida,
+                   v.tempo_patrulha -- Assumindo que esta coluna existe
+            FROM viaturas v
+            JOIN unidades u ON v.unidade_id = u.id
+            ORDER BY u.nome, v.prefixo
+        """)
+        viaturas_data = cursor.fetchall()
+
+
+        # Consulta para viaturas_por_unidade_data (usado como 'viaturas_por_unidade' no HTML)
+        cursor.execute("""
+            SELECT u.nome AS unidade_nome, COUNT(v.id) AS quantidade
+            FROM viaturas v
+            JOIN unidades u ON v.unidade_id = u.id
+            GROUP BY u.nome
+            ORDER BY u.nome
+        """)
+        viaturas_por_unidade_data = cursor.fetchall()
+
+
+        # Consulta para viaturas_por_status_data (usado como 'viaturas_por_status' no HTML, via JSON)
+        cursor.execute("""
+            SELECT status, COUNT(id) AS quantidade
+            FROM viaturas
+            GROUP BY status
+            ORDER BY status
+        """)
+        viaturas_por_status_data = cursor.fetchall()
+
+
+        # Consulta para totais_viaturas_data (usado como 'totais_viaturas' no HTML)
+        # Adaptado das categorias mencionadas anteriormente no seu HTML
+        cursor.execute("""
+            SELECT
+                COUNT(CASE WHEN status IN ('CFP', 'ESCOLAR/PROMUSE', 'FORÇATÁTICA', 'JUIZADO', 'ROTAC', 'RP', 'TRÂNSITO', 'CANIL') THEN id END) AS capital_cfp_adjcfp,
+                COUNT(CASE WHEN status = 'INTERIOR' THEN id END) AS interior,
+                COUNT(CASE WHEN status = 'MOTO' THEN id END) AS moto,
+                COUNT(id) AS total_geral,
+                COUNT(CASE WHEN status IN ('FORÇATÁTICA', 'RP', 'TRÂNSITO') THEN id END) AS soma_atendimento_copom,
+                COUNT(CASE WHEN status NOT IN ('RECOLHIDA', 'MANUTENÇÃO') THEN id END) AS total_ativos,
+                COUNT(CASE WHEN status IN ('RECOLHIDA', 'MANUTENÇÃO') THEN id END) AS total_inativos
+            FROM viaturas
+        """)
+        totais_db_row = cursor.fetchone()
+        if totais_db_row:
+            totais_viaturas_data = {
+                'capital_cfp_adjcfp': totais_db_row['capital_cfp_adjcfp'] or 0,
+                'interior': totais_db_row['interior'] or 0,
+                'moto': totais_db_row['moto'] or 0,
+                'total_geral': totais_db_row['total_geral'] or 0,
+                'soma_atendimento_copom': totais_db_row['soma_atendimento_copom'] or 0,
+                'total_ativos': totais_db_row['total_ativos'] or 0,
+                'total_inativos': totais_db_row['total_inativos'] or 0,
+            }
+        else:
+            totais_viaturas_data = {
+                'capital_cfp_adjcfp': 0, 'interior': 0, 'moto': 0,
+                'total_geral': 0, 'soma_atendimento_copom': 0,
+                'total_ativos': 0, 'total_inativos': 0,
+            }
+
+
+        # --- ESTE É O PONTO CRÍTICO: RENDERIZAR O TEMPLATE ---
+        return render_template('relatorios.html',
+                               supervisores_string=supervisores_string,
+                               cfps=cfps_data, # Variável usada no HTML
+                               viaturas=viaturas_data, # Variável usada no HTML
+                               viaturas_por_unidade=viaturas_por_unidade_data, # Variável usada no HTML
+                               viaturas_por_status=json.dumps([dict(row) for row in viaturas_por_status_data]), # Convertido para JSON para o JS
+                               totais_viaturas=totais_viaturas_data, # Variável usada no HTML
+                               unit_color_map=unit_color_map) # Agora um dicionário vazio
 
     except psycopg2.Error as err:
         flash(f"Erro no banco de dados ao gerar relatórios: {err}", 'danger')
+        print(f"Erro DB: {err}") # Para depuração
+        # Em caso de erro, renderize o template com dados vazios para evitar falhas na página
+        return render_template('relatorios.html',
+                               supervisores_string="", cfps=[], viaturas=[],
+                               viaturas_por_unidade=[], viaturas_por_status="[]",
+                               totais_viaturas={}, unit_color_map={})
     except Exception as e:
         flash(f"Ocorreu um erro inesperado ao gerar relatórios: {e}", 'danger')
+        print(f"Erro Geral: {e}") # Para depuração
+        # Em caso de erro, renderize o template com dados vazios para evitar falhas na página
+        return render_template('relatorios.html',
+                               supervisores_string="", cfps=[], viaturas=[],
+                               viaturas_por_unidade=[], viaturas_por_status="[]",
+                               totais_viaturas={}, unit_color_map={})
     finally:
         if cursor:
             cursor.close()
         if conn and not conn.closed:
             conn.close()
 
-    # Retorno padrão para relatorios, se a lógica completa não estiver disponível
-    # ou em caso de erro antes do render_template final da rota completa.
-    # É importante que esta rota tenha um render_template válido.
-    # Vou deixar um redirect temporário para não quebrar, mas idealmente seria um render_template
-    # com todos os dados esperados.
-    return redirect(url_for('index')) # ou render_template de relatorios.html com dados parciais/vazios
-
-
+# O 'if __name__ == '__main__': app.run(debug=True)' deve estar no final do seu arquivo app.py.
 if __name__ == '__main__':
     app.run(debug=True)
