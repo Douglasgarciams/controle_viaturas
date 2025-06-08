@@ -3,7 +3,8 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from datetime import datetime, timedelta, time
 import psycopg2
 import psycopg2.extras
-import pandas as pd # Certifique-se de que pandas está importado
+import pandas as pd
+import json # Importar o módulo json
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'co8bb9fffef7fe3f5892cfd83a5c36d71712e201c128be08b47c90f5589408ed82')
@@ -224,7 +225,7 @@ def ensure_ocorrencias_cepol_table():
 
 # --- CHAMADAS DAS FUNÇÕES DE CRIAÇÃO DE TABELA ---
 ensure_supervisores_table_and_initial_entry()
-ensure_unidades_table_and_initial_entries() # <-- ESTA FUNÇÃO FOI ATUALIZADA
+ensure_unidades_table_and_initial_entries()
 ensure_viaturas_table()
 ensure_contatos_table()
 ensure_ocorrencias_cepol_table()
@@ -293,7 +294,7 @@ def index():
         if row_supervisores:
             supervisores_data = row_supervisores
 
-        cursor.execute("SELECT id, nome FROM unidades ORDER BY nome ASC") # Adicionado ORDER BY
+        cursor.execute("SELECT id, nome FROM unidades ORDER BY nome ASC")
         unidades = cursor.fetchall()
 
         cursor.execute("""
@@ -363,7 +364,7 @@ def cadastro_viaturas():
 
             return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
-        cursor.execute("SELECT id, nome FROM unidades ORDER BY nome ASC") # Adicionado ORDER BY
+        cursor.execute("SELECT id, nome FROM unidades ORDER BY nome ASC")
         unidades = cursor.fetchall()
 
         if unidade_filtro:
@@ -640,7 +641,7 @@ def editar_viatura(viatura_id):
         """, (viatura_id,))
         viatura = cursor.fetchone()
 
-        cursor.execute("SELECT id, nome FROM unidades ORDER BY nome ASC") # Adicionado ORDER BY
+        cursor.execute("SELECT id, nome FROM unidades ORDER BY nome ASC")
         unidades = cursor.fetchall()
 
     except psycopg2.Error as err:
@@ -836,7 +837,8 @@ def relatorios():
     cfps = []
     viaturas = []
     viaturas_por_unidade = []
-    viaturas_por_status_data = [] # Renomeado para evitar conflito com a string JSON
+    # Renomeado para 'viaturas_por_status_list' para ser claro que é a lista de DictRows
+    viaturas_por_status_list = []
     totais_viaturas = {
         'total_geral': 0,
         'capital_cfp_adjcfp': 0,
@@ -911,10 +913,9 @@ def relatorios():
             GROUP BY status
             ORDER BY status
         """)
-        # Converta os resultados do cursor para uma lista de dicionários padrão Python
-        # antes de serializar para JSON. Isso garante compatibilidade.
+        # Corrigindo: Converter resultados do cursor para lista de dicionários padrão
         viaturas_por_status_raw = cursor.fetchall()
-        viaturas_por_status_data = [dict(row) for row in viaturas_por_status_raw]
+        viaturas_por_status_list = [dict(row) for row in viaturas_por_status_raw]
 
         # 5. Totais de Viaturas (Lógica CRÍTICA - REVISE CONFORME SEUS CRITÉRIOS)
         # Total Geral
@@ -923,29 +924,22 @@ def relatorios():
 
         # Total Capital + CFP + ADJCFP
         # ATENÇÃO: Ajuste a condição WHERE para refletir *exatamente* como você classifica essas viaturas.
-        # Exemplo: por prefixo, por status, ou por ID de unidade.
-        # Aqui, estou usando uma combinação de status e prefixos como exemplo.
         cursor.execute("""
             SELECT COUNT(v.id)
             FROM viaturas v
-            JOIN unidades u ON v.unidade_id = u.id
             WHERE
                 v.status IN ('FORÇA TATICA', 'RP', 'ADM', 'TRANSITO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ', 'CFP', 'ADJ CFP')
-                -- OU UMA CONDIÇÃO POR UNIDADE: u.nome IN ('1º BPM', '9º BPM', '10º BPM')
         """)
         totais_viaturas['capital_cfp_adjcfp'] = cursor.fetchone()[0]
 
         # Total Interior
-        # ATENÇÃO: Ajuste a condição WHERE.
         cursor.execute("""
             SELECT COUNT(id) FROM viaturas
             WHERE status = 'INTERIOR'
-            -- OU UMA CONDIÇÃO POR UNIDADE: JOIN unidades u ON v.unidade_id = u.id WHERE u.nome IN ('Nome Unidade Interior 1', 'Nome Unidade Interior 2')
         """)
         totais_viaturas['interior'] = cursor.fetchone()[0]
 
         # Total Moto
-        # ATENÇÃO: Ajuste a condição WHERE.
         cursor.execute("""
             SELECT COUNT(id) FROM viaturas
             WHERE status = 'MOTO' OR prefixo ILIKE 'MOTO%'
@@ -953,24 +947,22 @@ def relatorios():
         totais_viaturas['moto'] = cursor.fetchone()[0]
 
         # Soma Atendimento COPOM (exemplo: viaturas com status específicos de atendimento)
-        # ATENÇÃO: Ajuste a condição WHERE para os status que você considera "Atendimento COPOM".
         cursor.execute("""
             SELECT COUNT(id) FROM viaturas
-            WHERE status IN ('FORÇA TATICA', 'RP', 'TRANSITO') -- Exemplo de status
+            WHERE status IN ('FORÇA TATICA', 'RP', 'TRANSITO')
         """)
         totais_viaturas['soma_atendimento_copom'] = cursor.fetchone()[0]
 
         # Viaturas Ativas e Inativas
         # ATENÇÃO: Defina quais status para você significam "ativo" e "inativo".
-        # Exemplo: 'ADM', 'FORÇA TATICA', 'RP', 'TRANSITO', 'MOTO' são ativos.
-        # Um status 'MANUTENCAO', 'INATIVO', 'OCORRENCIA_LONGA' poderia ser inativo.
         cursor.execute("""
             SELECT COUNT(id) FROM viaturas
-            WHERE status IN ('FORÇA TATICA', 'RP', 'TRANSITO', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ', 'CFP', 'ADJ CFP', 'INTERIOR')
+            WHERE status IN ('FORÇA TATICA', 'RP', 'TRANSITO', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ', 'CFP', 'ADJ CFP', 'INTERIOR', 'ADM')
         """)
         totais_viaturas['total_ativos'] = cursor.fetchone()[0]
 
         totais_viaturas['total_inativos'] = totais_viaturas['total_geral'] - totais_viaturas['total_ativos']
+
 
         # 6. Todas as Viaturas Cadastradas
         cursor.execute("""
@@ -979,15 +971,14 @@ def relatorios():
             JOIN unidades u ON v.unidade_id = u.id
             ORDER BY u.nome, v.prefixo
         """)
-        viaturas = cursor.fetchall() # Isso preenche a lista 'viaturas' para o template
+        viaturas = cursor.fetchall()
 
     except psycopg2.Error as err:
         flash(f"Erro no banco de dados ao gerar relatórios: {err}", 'danger')
-        # Em caso de erro, passe listas vazias para o template
         supervisores_string = "Erro ao carregar dados dos supervisores."
         cfps = []
         viaturas_por_unidade = []
-        viaturas_por_status_data = [] # Vazio em caso de erro
+        viaturas_por_status_list = [] # Vazio em caso de erro
         totais_viaturas = {
             'total_geral': 0, 'capital_cfp_adjcfp': 0, 'interior': 0,
             'moto': 0, 'soma_atendimento_copom': 0, 'total_ativos': 0, 'total_inativos': 0
@@ -999,19 +990,27 @@ def relatorios():
         if conn and not conn.closed:
             conn.close()
 
-    # Converta viaturas_por_status_data para JSON string antes de passar para o template
-    # Isso é CRÍTICO para que o JavaScript possa parsear corretamente.
-    viaturas_por_status_json = json.dumps(viaturas_por_status_data)
+    # CRÍTICO: Converter a lista de dicionários Python para uma string JSON ANTES de passar para o template.
+    # O filtro |tojson no Jinja2 geralmente faz isso, mas explicitamente é mais robusto
+    # quando lidamos com objetos como DictRow do psycopg2.
+    viaturas_por_status_json = json.dumps(viaturas_por_status_list)
 
     return render_template('relatorios.html',
                            supervisores_string=supervisores_string,
                            cfps=cfps,
-                           viaturas=viaturas, # Para a tabela de todas as viaturas
+                           viaturas=viaturas,
                            viaturas_por_unidade=viaturas_por_unidade,
-                           viaturas_por_status=viaturas_por_status_json, # AQUI ESTÁ A MUDANÇA PRINCIPAL
+                           viaturas_por_status=viaturas_por_status_json, # Esta é a variável que o JS espera
                            totais_viaturas=totais_viaturas,
                            unit_color_map=unit_color_map)
 
 
 if __name__ == '__main__':
+    # Certifique-se de que suas variáveis de ambiente estão configuradas
+    # Exemplo (apenas para desenvolvimento local, NÃO USE EM PRODUÇÃO SEM SEGURANÇA):
+    # os.environ['DB_HOST'] = 'localhost'
+    # os.environ['DB_USER'] = 'seu_usuario'
+    # os.environ['DB_PASSWORD'] = 'sua_senha'
+    # os.environ['DB_NAME'] = 'seu_banco'
+    # os.environ['DB_PORT'] = '5432'
     app.run(debug=True)
