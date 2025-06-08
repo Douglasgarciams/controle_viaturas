@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Relatórios - Sistema de Viaturas</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         /* ================================================================================================= */
         /* === SEU CSS DO TEMA ESCURO ====================================================================== */
@@ -204,9 +203,10 @@
         <div class="card mb-4" id="supervisores-card">
             <div class="card-header text-center">
                 Supervisores de Serviço
-                <button class="btn btn-sm print-block-btn" onclick="printSection('supervisores-card')" aria-label="Imprimir bloco Supervisores de Serviço">Imprimir Bloco</button>
+                <button class="btn btn-sm print-block-btn" onclick="printSection('supervisores-card')">Imprimir Bloco</button>
             </div>
             <div class="card-body">
+                {# Aqui os dados são do supervisor_string que você gera do DB #}
                 <p class="text-white text-center">{{ supervisores_string | safe }}</p>
             </div>
         </div>
@@ -220,7 +220,7 @@
                         <button class="btn btn-sm print-block-btn" onclick="printSection('cfps-card')">Imprimir Bloco</button>
                     </div>
                     <div class="card-body">
-                        {% if cfps %} {# A variável passada é 'cfps' #}
+                        {% if cfps %}
                         <div class="table-responsive">
                             <table class="table table-striped table-hover">
                                 <thead>
@@ -231,10 +231,10 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for cfp in cfps %} {# Loop na variável 'cfps' #}
+                                    {% for cfp in cfps %}
                                     <tr>
                                         <td>{{ cfp.unidade_nome }}</td>
-                                        <td>{{ cfp.nome }}</td> {# <-- CORRIGIDO AQUI: use cfp.nome #}
+                                        <td>{{ cfp.nome }}</td>
                                         <td>{{ cfp.telefone or 'N/A' }}</td>
                                     </tr>
                                     {% endfor %}
@@ -282,24 +282,9 @@
             </div>
         </div>
 
-        <h3 class="mt-4">Resumo Geral de Viaturas</h3> {# CORRIGIDO: h<h3 para h3 #}
-        <div class="row mb-4">
-            <div class="col-md-4">
-                <div class="card" id="total-geral-card">
-                    <div class="card-header bg-primary text-white">
-                        Total Geral de Viaturas
-                        <button class="btn btn-sm print-block-btn" onclick="printSection('total-geral-card')">Imprimir Bloco</button>
-                    </div>
-                    <div class="card-body text-center">
-                        {# Mostra o total geral calculado no Python #}
-                        <h3>{{ totais_viaturas.total_viaturas_geral if totais_viaturas.total_viaturas_geral is not none else 0 }}</h3>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
+        {# 3. Viaturas por Status e Totais de Viaturas (um do lado do outro) #}
         <div class="row">
-            <div class="col-lg-6 col-md-12 mb-4">
+            <div class="col-lg-6 col-md-12 mb-4"> {# Card de Viaturas por Status #}
                 <div class="card" id="viaturas-por-status-card">
                     <div class="card-header">
                         Viaturas por Status
@@ -332,7 +317,7 @@
                 </div>
             </div>
 
-            <div class="col-lg-6 col-md-12 mb-4">
+            <div class="col-lg-6 col-md-12 mb-4"> {# Card de Totais de Viaturas #}
                 <div class="card" id="totais-viaturas-card">
                     <div class="card-header">
                         Totais de Viaturas
@@ -349,24 +334,24 @@
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td>Total Geral de Viaturas</td>
-                                        <td>{{ totais_viaturas.total_viaturas_geral if totais_viaturas.total_viaturas_geral is not none else 0 }}</td>
+                                        <td>Capital+CFP+ADJCFP</td>
+                                        <td>{{ totais_viaturas.total_viaturas_geral }}</td>
                                     </tr>
                                     <tr>
                                         <td>Interior</td>
-                                        <td>{{ totais_viaturas.total_interior if totais_viaturas.total_interior is not none else 0 }}</td>
+                                        <td>{{ totais_viaturas.total_interior }}</td>
                                     </tr>
                                     <tr>
                                         <td>Moto</td>
-                                        <td>{{ totais_viaturas.total_motos if totais_viaturas.total_motos is not none else 0 }}</td>
+                                        <td>{{ totais_viaturas.total_motos }}</td>
                                     </tr>
                                     <tr class="total-geral-row">
                                         <td><strong>Total Geral (Capital + Interior + Motos)</strong></td>
-                                        <td><strong>{{ totais_viaturas.total_capital_interior_motos if totais_viaturas.total_capital_interior_motos is not none else 0 }}</strong></td>
+                                        <td>{{ totais_viaturas.total_capital_interior_motos }}</td>
                                     </tr>
                                     <tr>
                                         <td>Soma Atendimento COPOM (FT, RP, Trânsito)</td>
-                                        <td>{{ totais_viaturas.soma_atendimento_copom if totais_viaturas.soma_atendimento_copom is not none else 0 }}</td>
+                                        <td>{{ totais_viaturas.soma_atendimento_copom }}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -376,6 +361,7 @@
             </div>
         </div>
 
+        {# 4. Todas as Viaturas Cadastradas (sozinho - largura total) #}
         <div class="card mt-4 mb-4" id="todas-viaturas-card">
             <div class="card-header">
                 Todas as Viaturas Cadastradas
@@ -392,18 +378,17 @@
                                 <th>Status</th>
                                 <th>Entrada</th>
                                 <th>Saída</th>
-                                <th>Tempo Patrulha</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for viatura in viaturas %}
-                            <tr>
+                            {# Aplica a classe de cor baseada na unidade #}
+                            <tr class="{{ unit_color_map[viatura.unidade_nome] if viatura.unidade_nome in unit_color_map else '' }}">
                                 <td>{{ viatura.unidade_nome }}</td>
                                 <td>{{ viatura.prefixo }}</td>
                                 <td>{{ viatura.status }}</td>
                                 <td>{{ viatura.hora_entrada if viatura.hora_entrada else 'N/A' }}</td>
                                 <td>{{ viatura.hora_saida if viatura.hora_saida else 'N/A' }}</td>
-                                <td>{{ viatura.tempo_patrulha if viatura.tempo_patrulha else 'N/A' }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -415,40 +400,51 @@
             </div>
         </div>
 
+        {# Botões de Navegação e Impressão Global #}
         <div class="container mt-4 mb-4 text-center global-controls-container">
             <a href="/" class="btn btn-secondary me-2">Voltar à Página Inicial</a>
             <button onclick="window.print()" class="btn btn-info">Imprimir Relatório Completo</button>
-            <a href="https://wa.me/?text=Confira%20o%20relatório%20de%20viaturas%20em%3A%20{{ request.url }}"
-               class="btn btn-success"
-               target="_blank"
-               rel="noopener noreferrer">
-                <i class="fab fa-whatsapp"></i> Compartilhar via WhatsApp
-            </a>
-        </div>
 
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-        <script>
-            // A função calculateAndDisplayTotals foi removida, pois os cálculos são feitos no Python.
-            // A função printSection permanece para impressão de blocos.
-            function printSection(elementId) {
-                const printContents = document.getElementById(elementId).innerHTML;
-                const originalContents = document.body.innerHTML;
+    </div> {# Fechamento do container-fluid #}
 
-                // Esconde tudo no body, exceto o elemento a ser impresso
-                document.body.innerHTML = printContents;
-                
-                // Adiciona uma classe temporária para garantir que apenas o conteúdo visível seja impresso
-                const elementToPrint = document.body.children[0]; // O primeiro (e único) filho é o card
-                if (elementToPrint) {
-                    elementToPrint.classList.add('print-target');
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function printSection(sectionId) {
+            // Esconde todos os cards e elementos globais
+            const allCards = document.querySelectorAll('.card');
+            const globalControls = document.querySelector('.global-controls-container');
+            const mainHeader = document.querySelector('h2');
+            const bodyElement = document.body;
+
+            // Adiciona classe para o corpo da página para controlar o overflow durante a impressão
+            bodyElement.classList.add('printing-active');
+
+            allCards.forEach(card => {
+                if (card.id !== sectionId) {
+                    card.classList.add('hide-for-print');
+                } else {
+                    card.classList.add('print-target'); // Adiciona uma classe para o card que será impresso
                 }
+            });
 
-                window.print();
-                
-                // Restaura o conteúdo original e recarrega para reativar todos os listeners
-                document.body.innerHTML = originalContents;
-                window.location.reload(); 
-            }
-        </script>
-    </body>
+            if (globalControls) globalControls.classList.add('hide-for-print');
+            if (mainHeader) mainHeader.classList.add('hide-for-print');
+
+            // Chamar a impressão
+            window.print();
+
+            // Restaurar a visibilidade após a impressão
+            window.onafterprint = function() {
+                allCards.forEach(card => {
+                    card.classList.remove('hide-for-print');
+                    card.classList.remove('print-target');
+                });
+                if (globalControls) globalControls.classList.remove('hide-for-print');
+                if (mainHeader) mainHeader.classList.remove('hide-for-print');
+                bodyElement.classList.remove('printing-active'); // Remove a classe do corpo
+                window.onafterprint = null; // Limpa a função para evitar execuções múltiplas
+            };
+        }
+    </script>
+</body>
 </html>
