@@ -221,7 +221,7 @@
                         <button class="btn btn-sm print-block-btn" onclick="printSection('cfps-card')">Imprimir Bloco</button>
                     </div>
                     <div class="card-body">
-                        {% if cfps %}
+                        {% if cfps_data %}
                         <div class="table-responsive">
                             <table class="table table-striped table-hover">
                                 <thead>
@@ -232,10 +232,10 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for cfp in cfps %}
+                                    {% for cfp in cfps_data %}
                                     <tr>
                                         <td>{{ cfp.unidade_nome }}</td>
-                                        <td>{{ cfp.cfp_nome }}</td> {# <-- Linha CORRIGIDA #}
+                                        <td>{{ cfp_nome }}</td> {# <-- Linha CORRIGIDA #}
                                         <td>{{ cfp.telefone or 'N/A' }}</td>
                                     </tr>
                                     {% endfor %}
