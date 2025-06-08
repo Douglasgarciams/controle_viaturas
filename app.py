@@ -827,26 +827,6 @@ def editar_ocorrencia(id):
 
     return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
 
-import psycopg2
-import psycopg2.extras
-import json # Adicione esta importação para json.dumps
-
-# Supondo que 'get_db_connection' e 'app' já estão definidos em seu app.py
-# Exemplo básico, ajuste conforme sua configuração real
-from flask import Flask, render_template, request, redirect, url_for, flash # Removi jsonify pois não estava sendo usado no seu trecho
-
-# APENAS PARA EXEMPLIFICAR A ROTA DE RELATÓRIOS.
-# VOCÊ DEVE TER SEU 'app' e 'get_db_connection' DEFINIDOS ANTES.
-# Se já tiver isso, IGNORE essas linhas de exemplo.
-# --- EXEMPO DE COMO PODERIAM SER DEFINIDOS (NÃO COPIE SE JÁ TIVER) ---
-# app = Flask(__name__)
-# app.secret_key = 'sua_chave_secreta_muito_secreta' # Substitua por uma chave segura
-# DATABASE_URL = "postgres://user:pass@host:port/dbname" # Substitua pela sua URL de conexão REAL
-# def get_db_connection():
-#     return psycopg2.connect(DATABASE_URL)
-# --- FIM DO EXEMPLO ---
-
-
 @app.route('/relatorios')
 def relatorios():
     conn = None
@@ -863,12 +843,11 @@ def relatorios():
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-        # Consulta dos supervisores
         cursor.execute("""
-            SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento
-            FROM supervisores
-            WHERE id = 1
-        """)
+                       SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento
+                       FROM supervisores
+                       WHERE id = 1
+                       """)
         supervisores_db_row = cursor.fetchone()
 
         if supervisores_db_row:
@@ -881,37 +860,73 @@ def relatorios():
                 supervisores_parts.append(f"<strong>Supervisor de Despacho:</strong> {supervisores_db_row['supervisor_despacho']}")
             if supervisores_db_row['supervisor_atendimento']:
                 supervisores_parts.append(f"<strong>Supervisor de Atendimento:</strong> {supervisores_db_row['supervisor_atendimento']}")
-            supervisores_string = " - ".join(supervisores_parts)
+            if supervisores_parts:
+                supervisores_string = " - ".join(supervisores_parts)
+            else:
+                supervisores_string = "Nenhum supervisor configurado."
+        else:
+            supervisores_string = "Nenhum supervisor cadastrado."
 
-        # Exemplo de busca simples para cfps (adicione as suas queries conforme seu banco)
         cursor.execute("""
-            SELECT u.nome AS unidade_nome, c.cfp, c.telefone
-            FROM contatos c
-            JOIN unidades u ON c.unidade_id = u.id
-            ORDER BY u.nome, c.cfp
-        """)
+                       SELECT c.id, c.unidade_id, c.cfp AS nome, c.telefone, u.nome AS unidade_nome
+                       FROM contatos c
+                       JOIN unidades u ON c.unidade_id = u.id
+                       ORDER BY u.nome, c.cfp
+                       """)
         cfps_data = cursor.fetchall()
 
-        # (adicione outras queries para viaturas_data, totais, etc)
+        cursor.execute("""
+                       SELECT v.*, u.nome AS unidade_nome
+                       FROM viaturas v
+                       JOIN unidades u ON v.unidade_id = u.id
+                       ORDER BY u.nome, v.prefixo
+                       """)
+        viaturas_data = cursor.fetchall()
 
-        return render_template('relatorios.html',
-                               supervisores_string=supervisores_string,
-                               cfps_data=cfps_data,
-                               viaturas_data=viaturas_data,
-                               viaturas_por_unidade=viaturas_por_unidade,
-                               viaturas_por_status=viaturas_por_status,
-                               totais_viaturas=totais_viaturas)
+        cursor.execute("""
+                       SELECT u.nome AS unidade_nome, COUNT(v.id) AS quantidade
+                       FROM viaturas v
+                       JOIN unidades u ON v.unidade_id = u.id
+                       GROUP BY u.nome
+                       ORDER BY u.nome
+                       """)
+        viaturas_por_unidade = cursor.fetchall()
+
+        viaturas_por_status_raw = {}
+        for status_opt in STATUS_OPTIONS:
+            cursor.execute("SELECT COUNT(*) as quantidade FROM viaturas WHERE status = %s", (status_opt,))
+            count = cursor.fetchone()['quantidade']
+            viaturas_por_status_raw[status_opt] = count
+
+        viaturas_por_status = [{"status": s, "quantidade": q} for s, q in viaturas_por_status_raw.items()]
+
+        cursor.execute("SELECT COUNT(*) AS total_geral FROM viaturas")
+        totais_viaturas['total_geral'] = cursor.fetchone()['total_geral']
+
+        cursor.execute("SELECT COUNT(*) AS em_operacao FROM viaturas WHERE status IN ('RP', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ', 'FORÇA TATICA', 'TRANSITO')")
+        totais_viaturas['em_operacao'] = cursor.fetchone()['em_operacao']
+
+        cursor.execute("SELECT COUNT(*) AS em_manutencao FROM viaturas WHERE status IN ('ADM', 'CFP', 'ADJ CFP', 'INTERIOR')")
+        totais_viaturas['em_manutencao'] = cursor.fetchone()['em_manutencao']
+
 
     except psycopg2.Error as err:
-        flash(f"Erro no banco de dados ao gerar relatórios: {err}", 'danger')
+        flash(f"Database error in reports: {err}", 'danger')
     except Exception as e:
-        flash(f"Ocorreu um erro inesperado ao gerar relatórios: {e}", 'danger')
+        flash(f"An unexpected error occurred in reports: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
         if conn and not conn.closed:
             conn.close()
 
-    # Se ocorrer erro, renderiza uma página simples ou redireciona
-    return render_template('relatorios.html', supervisores_string="", cfps_data=[], viaturas_data=[],
-                           viaturas_por_unidade=[], viaturas_por_status=[], totais_viaturas={})
+    return render_template('relatorios.html',
+                           supervisores_string=supervisores_string,
+                           cfps_data=cfps_data,
+                           viaturas_data=viaturas_data,
+                           viaturas_por_unidade=viaturas_por_unidade,
+                           viaturas_por_status=viaturas_por_status,
+                           totais_viaturas=totais_viaturas)
+
+if __name__ == '__main__':
+    app.run(debug=True)
