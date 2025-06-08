@@ -256,49 +256,20 @@
                         <button class="btn btn-sm print-block-btn" onclick="printSection('viaturas-por-unidade-card')">Imprimir Bloco</button>
                     </div>
                     <div class="card-body">
-                        {# ESTA SEÇÃO FOI ATUALIZADA PARA MOSTRAR DETALHES DE VIATURAS POR UNIDADE #}
                         {% if viaturas_por_unidade %}
                         <div class="table-responsive">
-                            <table class="table table-striped table-bordered">
+                            <table class="table table-striped table-hover">
                                 <thead>
                                     <tr>
                                         <th>Unidade</th>
-                                        <th>Prefixo</th>
-                                        <th>Status</th>
-                                        <th>Hora Entrada</th>
-                                        <th>Hora Saída</th>
-                                        <th>Tempo Patrulha</th>
+                                        <th>Quantidade</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for unidade_info in viaturas_por_unidade %}
-                                        {% if unidade_info.viaturas %}
-                                            {% for viatura in unidade_info.viaturas %}
-                                            <tr>
-                                                {% if loop.first %}
-                                                    <td rowspan="{{ unidade_info.viaturas|length }}" 
-                                                        class="{{ unit_color_map[unidade_info.unidade_nome] if unidade_info.unidade_nome in unit_color_map else '' }}">
-                                                        <strong>{{ unidade_info.unidade_nome }}</strong>
-                                                    </td>
-                                                {% endif %}
-                                                <td>{{ viatura.prefixo }}</td>
-                                                <td>{{ viatura.status }}</td>
-                                                <td>{{ viatura.hora_entrada }}</td>
-                                                <td>{{ viatura.hora_saida }}</td>
-                                                <td>{{ viatura.tempo_patrulha }}</td>
-                                            </tr>
-                                            {% endfor %}
-                                        {% else %}
-                                            <tr>
-                                                <td class="{{ unit_color_map[unidade_info.unidade_nome] if unidade_info.unidade_nome in unit_color_map else '' }}">
-                                                    <strong>{{ unidade_info.unidade_nome }}</strong>
-                                                </td>
-                                                <td colspan="5">Nenhuma viatura para esta unidade.</td>
-                                            </tr>
-                                        {% endif %}
-                                    {% else %}
+                                    {% for item in viaturas_por_unidade %}
                                     <tr>
-                                        <td colspan="6">Nenhuma viatura agrupada por unidade.</td>
+                                        <td>{{ item.unidade_nome }}</td>
+                                        <td>{{ item.quantidade }}</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -312,34 +283,78 @@
             </div>
         </div>
 
+        <h3 class="mt-4">Resumo Geral de Viaturas</h3>
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card" id="total-geral-card">
+                    <div class="card-header bg-primary text-white">
+                        Total Geral de Viaturas
+                        <button class="btn btn-sm print-block-btn" onclick="printSection('total-geral-card')">Imprimir Bloco</button>
+                    </div>
+                    <div class="card-body text-center">
+                        <h3>{{ totais_viaturas.total_geral }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="card" id="totais-por-categoria-card">
+                    <div class="card-header bg-info text-white">
+                        Totais por Categoria de Status
+                        <button class="btn btn-sm print-block-btn" onclick="printSection('totais-por-categoria-card')">Imprimir Bloco</button>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Capital (CFP/ADJ CFP):
+                            <span class="badge bg-primary rounded-pill">{{ totais_viaturas.capital_cfp_adjcfp }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Interior:
+                            <span class="badge bg-info rounded-pill">{{ totais_viaturas.interior }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Motos:
+                            <span class="badge bg-success rounded-pill">{{ totais_viaturas.moto }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Atendimento COPOM:
+                            <span class="badge bg-warning text-dark rounded-pill">{{ totais_viaturas.soma_atendimento_copom }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Viaturas Ativas:
+                            <span class="badge bg-success rounded-pill">{{ totais_viaturas.total_ativos }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Viaturas Inativas:
+                            <span class="badge bg-danger rounded-pill">{{ totais_viaturas.total_inativos }}</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
         {# 3. Viaturas por Status e Totais de Viaturas (um do lado do outro) #}
         <div class="row">
             <div class="col-lg-6 col-md-12 mb-4"> {# Card de Viaturas por Status #}
                 <div class="card" id="viaturas-por-status-card">
                     <div class="card-header">
-                        Viaturas por Status Operacional
+                        Viaturas por Status
                         <button class="btn btn-sm print-block-btn" onclick="printSection('viaturas-por-status-card')">Imprimir Bloco</button>
                     </div>
                     <div class="card-body">
-                        {# ESTA SEÇÃO FOI ATUALIZADA PARA USAR 'item.count' E SER RENDERIZADA DIRETAMENTE PELO JINJA #}
-                        {% if viaturas_por_status %} {# viaturas_por_status é o mesmo que viaturas_por_status_list do Python #}
-                        <div class="table-responsive mb-4">
-                            <table class="table table-striped table-bordered">
+                        {# ESTA PARTE É MANTIDA COMO ESTAVA, APENAS COM A REFERÊNCIA DO PYTHON #}
+                        {% if viaturas_por_status %}
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
                                 <thead>
                                     <tr>
                                         <th>Status</th>
-                                        <th>Total</th>
+                                        <th>Quantidade</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for item in viaturas_por_status %}
                                     <tr>
                                         <td>{{ item.status }}</td>
-                                        <td>{{ item.count }}</td>
-                                    </tr>
-                                    {% else %}
-                                    <tr>
-                                        <td colspan="2">Nenhum status de viatura encontrado.</td>
+                                        <td>{{ item.quantidade }}</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -359,51 +374,38 @@
                         <button class="btn btn-sm print-block-btn" onclick="printSection('totais-viaturas-card')">Imprimir Bloco</button>
                     </div>
                     <div class="card-body">
-                        {# ESTA SEÇÃO FOI ATUALIZADA PARA SER RENDERIZADA DIRETAMENTE PELO JINJA COM OS DADOS DE 'totais_viaturas' #}
-                        <div class="row">
-                            <div class="col-md-12">
-                                <div class="card mb-3">
-                                    <div class="card-header bg-primary text-white">
-                                        Total Geral de Viaturas
-                                    </div>
-                                    <div class="card-body text-center">
-                                        <h3>{{ totais_viaturas.total_geral }}</h3>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-12">
-                                <div class="card mb-3">
-                                    <div class="card-header bg-info text-white">
-                                        Totais por Categoria de Status
-                                    </div>
-                                    <ul class="list-group list-group-flush">
-                                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                                            Capital (CFP/ADJ CFP):
-                                            <span class="badge bg-primary rounded-pill">{{ totais_viaturas.capital_cfp_adjcfp }}</span>
-                                        </li>
-                                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                                            Interior:
-                                            <span class="badge bg-info rounded-pill">{{ totais_viaturas.interior }}</span>
-                                        </li>
-                                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                                            Motos:
-                                            <span class="badge bg-success rounded-pill">{{ totais_viaturas.moto }}</span>
-                                        </li>
-                                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                                            Atendimento COPOM:
-                                            <span class="badge bg-warning text-dark rounded-pill">{{ totais_viaturas.soma_atendimento_copom }}</span>
-                                        </li>
-                                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                                            Viaturas Ativas:
-                                            <span class="badge bg-success rounded-pill">{{ totais_viaturas.total_ativos }}</span>
-                                        </li>
-                                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                                            Viaturas Inativas:
-                                            <span class="badge bg-danger rounded-pill">{{ totais_viaturas.total_inativos }}</span>
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Categoria</th>
+                                        <th>Quantidade</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="totais-viaturas-body">
+                                    {# Estes campos serão preenchidos via JavaScript - MANTIDO #}
+                                    <tr>
+                                        <td>Capital+CFP+ADJCFP</td>
+                                        <td id="total-capital-cfp-adjcfp">0</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Interior</td>
+                                        <td id="total-interior">0</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Moto</td>
+                                        <td id="total-moto">0</td>
+                                    </tr>
+                                    <tr class="total-geral-row">
+                                        <td><strong>Total Geral (Capital + Interior + Motos)</strong></td>
+                                        <td id="total-geral">0</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Soma Atendimento COPOM (FT, RP, Trânsito)</td>
+                                        <td id="soma-copom">0</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -465,7 +467,65 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // O JavaScript para calcular totais foi removido, pois agora os dados são renderizados diretamente via Jinja.
+        // Dados de viaturas por status vindos do backend (ex: Flask/Jinja2)
+        // CRÍTICO: Use JSON.parse() para garantir que a string JSON seja convertida em um array de objetos JavaScript.
+        // A variável 'viaturas_por_status' já deve ser uma string JSON válida do seu backend (via json.dumps()).
+        // MANTIDO: O JavaScript para calcular totais foi mantido, pois era parte do seu código original.
+        const viaturasPorStatusData = JSON.parse('{{ viaturas_por_status | safe }}');
+
+        function calculateAndDisplayTotals() {
+            let totalCapitalCfpAdjCfp = 0;
+            let totalInterior = 0;
+            let totalMotos = 0;
+            let somaAtendimentoCopom = 0;
+
+            // Mapeia os dados por status para facilitar o acesso
+            const statusMap = {};
+            viaturasPorStatusData.forEach(item => {
+                statusMap[item.status] = item.quantidade; // Ou item.count se o seu Python estiver passando 'count' para esta tabela
+            });
+
+            // Soma para 'Capital+CFP+ADJCFP'
+            // Ajustado para os nomes de status da sua imagem "Viaturas por Status"
+            totalCapitalCfpAdjCfp = (statusMap['CFP'] || 0) +
+                                    (statusMap['ESCOLAR/PROMUSE'] || 0) +
+                                    (statusMap['FORÇATÁTICA'] || 0) + // Corrigido
+                                    (statusMap['JUIZADO'] || 0) +
+                                    (statusMap['ROTAC'] || 0) +
+                                    (statusMap['RP'] || 0) +
+                                    (statusMap['TRÂNSITO'] || 0) + // Corrigido
+                                    (statusMap['CANIL'] || 0);
+                                    // Adicione outros status que você espera aqui para essa categoria,
+                                    // usando os nomes EXATOS da sua lista de status, como 'ADJ CFP', 'BOPE', 'POL.COMUNITARIO', 'TRANSITO/BLITZ', 'ADM' se eles existirem.
+                                    // Com base na imagem, eles não aparecem, então não os incluí por padrão.
+
+            // Soma para 'Interior'
+            totalInterior = (statusMap['INTERIOR'] || 0);
+
+            // Soma para 'Moto'
+            totalMotos = (statusMap['MOTO'] || 0);
+
+            // Soma para 'Soma Atendimento COPOM (FT, RP, Trânsito)'
+            // Ajustado para os nomes de status da sua imagem "Viaturas por Status"
+            somaAtendimentoCopom = (statusMap['FORÇATÁTICA'] || 0) + (statusMap['RP'] || 0) + (statusMap['TRÂNSITO'] || 0);
+
+            // Calcula o Total Geral (Este é o total de todos os status na sua lista)
+            let totalGeralCalculado = 0;
+            viaturasPorStatusData.forEach(item => {
+                totalGeralCalculado += item.quantidade; // Ou item.count
+            });
+
+            // Preenche os campos no HTML
+            document.getElementById('total-capital-cfp-adjcfp').textContent = totalCapitalCfpAdjCfp;
+            document.getElementById('total-interior').textContent = totalInterior;
+            document.getElementById('total-moto').textContent = totalMotos;
+            document.getElementById('total-geral').textContent = totalGeralCalculado; // Use o total calculado a partir dos dados do JS
+            document.getElementById('soma-copom').textContent = somaAtendimentoCopom;
+        }
+
+        // Chama a função para calcular e exibir os totais quando a página carregar
+        document.addEventListener('DOMContentLoaded', calculateAndDisplayTotals);
+
 
         function printSection(sectionId) {
             // Esconde todos os cards e elementos globais
