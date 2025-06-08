@@ -853,18 +853,17 @@ def relatorios():
     cursor = None
 
     supervisores_string = ""
-    # Estas são as variáveis que VOCÊ inicializou no seu código original:
     cfps_data = []
     viaturas_data = []
     viaturas_por_unidade = []
     viaturas_por_status = []
-    totais_viaturas = {} # Inicializada no seu código original, será passada.
+    totais_viaturas = {}
 
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-        # 1. Obter dados dos Supervisores (do seu código)
+        # Consulta dos supervisores
         cursor.execute("""
             SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento
             FROM supervisores
@@ -882,122 +881,37 @@ def relatorios():
                 supervisores_parts.append(f"<strong>Supervisor de Despacho:</strong> {supervisores_db_row['supervisor_despacho']}")
             if supervisores_db_row['supervisor_atendimento']:
                 supervisores_parts.append(f"<strong>Supervisor de Atendimento:</strong> {supervisores_db_row['supervisor_atendimento']}")
-            if supervisores_parts:
-                supervisores_string = " - ".join(supervisores_parts)
-            else:
-                pass # Seu pass original
+            supervisores_string = " - ".join(supervisores_parts)
 
-        # --- INÍCIO: Adicione as consultas SQL para as variáveis que VOCÊ inicializou ---
-        # ATENÇÃO: As consultas abaixo são baseadas em um esquema comum de DB para essas variáveis.
-        # Se seu esquema for diferente, você precisará ajustá-las.
-
-        # Consulta para cfps_data
+        # Exemplo de busca simples para cfps (adicione as suas queries conforme seu banco)
         cursor.execute("""
-            SELECT u.nome AS unidade_nome, c.cfp_nome, c.telefone
+            SELECT u.nome AS unidade_nome, c.cfp, c.telefone
             FROM contatos c
             JOIN unidades u ON c.unidade_id = u.id
-            ORDER BY u.nome, c.cfp_nome
+            ORDER BY u.nome, c.cfp
         """)
         cfps_data = cursor.fetchall()
 
-        # Consulta para viaturas_data
-        cursor.execute("""
-            SELECT v.prefixo, v.status, u.nome AS unidade_nome,
-                   TO_CHAR(v.hora_entrada, 'HH24:MI') AS hora_entrada,
-                   TO_CHAR(v.hora_saida, 'HH24:MI') AS hora_saida,
-                   v.tempo_patrulha
-            FROM viaturas v
-            JOIN unidades u ON v.unidade_id = u.id
-            ORDER BY u.nome, v.prefixo
-        """)
-        viaturas_data = cursor.fetchall()
+        # (adicione outras queries para viaturas_data, totais, etc)
 
-        # Consulta para viaturas_por_unidade
-        cursor.execute("""
-            SELECT u.nome AS unidade_nome, COUNT(v.id) AS quantidade
-            FROM viaturas v
-            JOIN unidades u ON v.unidade_id = u.id
-            GROUP BY u.nome
-            ORDER BY u.nome
-        """)
-        viaturas_por_unidade = cursor.fetchall()
-
-        # Consulta para viaturas_por_status (para o gráfico e talvez tabela)
-        cursor.execute("""
-            SELECT status, COUNT(id) AS quantidade
-            FROM viaturas
-            GROUP BY status
-            ORDER BY status
-        """)
-        viaturas_por_status = cursor.fetchall()
-
-        # Consulta para totais_viaturas (se esta variável precisa ser preenchida)
-        # Se no seu código original você só declarou 'totais_viaturas = {}' e não tinha uma consulta
-        # para ela, esta consulta pode ser removida se você não quiser essa seção no HTML.
-        # Mas para que ela tenha dados, é preciso uma consulta.
-        cursor.execute("""
-            SELECT
-                COUNT(CASE WHEN status IN ('CFP', 'ESCOLAR/PROMUSE', 'FORÇATÁTICA', 'JUIZADO', 'ROTAC', 'RP', 'TRÂNSITO', 'CANIL') THEN id END) AS capital_cfp_adjcfp,
-                COUNT(CASE WHEN status = 'INTERIOR' THEN id END) AS interior,
-                COUNT(CASE WHEN status = 'MOTO' THEN id END) AS moto,
-                COUNT(id) AS total_geral,
-                COUNT(CASE WHEN status IN ('FORÇATÁTICA', 'RP', 'TRÂNSITO') THEN id END) AS soma_atendimento_copom,
-                COUNT(CASE WHEN status NOT IN ('RECOLHIDA', 'MANUTENÇÃO') THEN id END) AS total_ativos,
-                COUNT(CASE WHEN status IN ('RECOLHIDA', 'MANUTENÇÃO') THEN id END) AS total_inativos
-            FROM viaturas
-        """)
-        totais_db_row = cursor.fetchone()
-        if totais_db_row:
-            totais_viaturas = {
-                'capital_cfp_adjcfp': totais_db_row['capital_cfp_adjcfp'] or 0,
-                'interior': totais_db_row['interior'] or 0,
-                'moto': totais_db_row['moto'] or 0,
-                'total_geral': totais_db_row['total_geral'] or 0,
-                'soma_atendimento_copom': totais_db_row['soma_atendimento_copom'] or 0,
-                'total_ativos': totais_db_row['total_ativos'] or 0,
-                'total_inativos': totais_db_row['total_inativos'] or 0,
-            }
-        else:
-            totais_viaturas = {
-                'capital_cfp_adjcfp': 0, 'interior': 0, 'moto': 0,
-                'total_geral': 0, 'soma_atendimento_copom': 0,
-                'total_ativos': 0, 'total_inativos': 0,
-            }
-        # --- FIM: Adicione as consultas SQL para as variáveis que VOCÊ inicializou ---
-
-
-        # --- ESSA É A ÚNICA MUDANÇA ESSENCIAL PARA EXIBIR O RELATÓRIO ---
         return render_template('relatorios.html',
                                supervisores_string=supervisores_string,
-                               cfps=cfps_data, # Passando a variável que você inicializou
-                               viaturas=viaturas_data, # Passando a variável que você inicializou
-                               viaturas_por_unidade=viaturas_por_unidade, # Passando a variável que você inicializou
-                               # json.dumps é necessário se seu JS no HTML espera um JSON string
-                               viaturas_por_status=json.dumps([dict(row) for row in viaturas_por_status]), # Passando a variável que você inicializou
-                               totais_viaturas=totais_viaturas # Passando a variável que você inicializou
-                               # NÃO ESTOU PASSANDO unit_color_map AQUI
-                               )
+                               cfps_data=cfps_data,
+                               viaturas_data=viaturas_data,
+                               viaturas_por_unidade=viaturas_por_unidade,
+                               viaturas_por_status=viaturas_por_status,
+                               totais_viaturas=totais_viaturas)
 
     except psycopg2.Error as err:
         flash(f"Erro no banco de dados ao gerar relatórios: {err}", 'danger')
-        print(f"Erro no DB: {err}")
-        return render_template('relatorios.html',
-                               supervisores_string="", cfps=[], viaturas=[],
-                               viaturas_por_unidade=[], viaturas_por_status="[]",
-                               totais_viaturas={}) # Sem unit_color_map aqui também
     except Exception as e:
         flash(f"Ocorreu um erro inesperado ao gerar relatórios: {e}", 'danger')
-        print(f"Erro geral: {e}")
-        return render_template('relatorios.html',
-                               supervisores_string="", cfps=[], viaturas=[],
-                               viaturas_por_unidade=[], viaturas_por_status="[]",
-                               totais_viaturas={}) # Sem unit_color_map aqui também
     finally:
         if cursor:
             cursor.close()
         if conn and not conn.closed:
             conn.close()
 
-# (Seu if __name__ == '__main__': app.run(debug=True) aqui)
-if __name__ == '__main__':
-    app.run(debug=True)
+    # Se ocorrer erro, renderiza uma página simples ou redireciona
+    return render_template('relatorios.html', supervisores_string="", cfps_data=[], viaturas_data=[],
+                           viaturas_por_unidade=[], viaturas_por_status=[], totais_viaturas={})
