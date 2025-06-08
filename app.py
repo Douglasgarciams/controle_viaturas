@@ -1,21 +1,19 @@
-import os
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from datetime import datetime, timedelta, time
-import psycopg2
-import psycopg2.extras
-import pandas as pd # Certifique-se de que pandas está importado
+import mysql.connector # Keep this for MySQL connection
+import pandas as pd # Keep this for Excel export
+from io import BytesIO # Keep this for Excel export
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'co8bb9fffef7fe3f5892cfd83a5c36d71712e201c128be08b47c90f5589408ed82')
+app.secret_key = 'chave-secreta-qualquer' # Mantenha sua chave secreta aqui
 
-# 🔗 Conexão com PostgreSQL
+# 🔗 Conexão com MySQL
 def get_db_connection():
-    return psycopg2.connect(
-        host=os.environ.get('DB_HOST'),
-        user=os.environ.get('DB_USER'),
-        password=os.environ.get('DB_PASSWORD'),
-        database=os.environ.get('DB_NAME'),
-        port=os.environ.get('DB_PORT', '5432')
+    return mysql.connector.connect(
+        host='localhost',
+        user='root',
+        password='Reserva207*',
+        database='controle'
     )
 
 # Função auxiliar para formatar minutos para HH:MM
@@ -24,32 +22,35 @@ def format_minutes_to_hh_mm(total_minutes):
     minutes = total_minutes % 60
     return f"{hours:02d}:{minutes:02d}"
 
-# Função para converter string "X min" de volta para minutos (se for o caso)
+# NOVO: Função para converter string "X min" de volta para minutos (se for o caso)
 def parse_minutes_from_string(time_str):
     if time_str and isinstance(time_str, str) and " min" in time_str:
         try:
             return int(time_str.replace(" min", "").strip())
         except ValueError:
             pass
-    return None
+    return None # Não é um formato "X min" válido ou erro na conversão
 
-# Função para garantir que o valor do tempo esteja em HH:MM para exibição
+# NOVO: Função para garantir que o valor do tempo esteja em HH:MM para exibição
 def ensure_hh_mm_format_for_display(time_value):
+    # Se já é um datetime.time object (ex: se DB column for TIME)
     if isinstance(time_value, time):
         return time_value.strftime("%H:%M")
 
+    # Se já é uma string HH:MM válida (ex: de novas entradas)
     if isinstance(time_value, str) and len(time_value) == 5 and ':' in time_value:
         try:
             datetime.strptime(time_value, "%H:%M")
             return time_value
         except ValueError:
-            pass
+            pass # Não é um HH:MM válido, tenta outras opções
 
+    # Se está no formato "X min" (de entradas antigas), converte e formata
     minutes = parse_minutes_from_string(time_value)
     if minutes is not None:
-        return format_minutes_to_hh_mm(minutes)
+        return format_minutes_to_hh_mm(minutes) # Usa o formatter existente
 
-    return ''
+    return '' # Retorna string vazia para qualquer outro caso inválido/vazio
 
 # 🔧 Status disponíveis
 STATUS_OPTIONS = [
@@ -58,8 +59,7 @@ STATUS_OPTIONS = [
     'JUIZADO', 'TRANSITO/BLITZ'
 ]
 
-# --- FUNÇÕES PARA GARANTIR QUE AS TABELAS EXISTAM ---
-
+# Função para garantir que a tabela 'supervisores' exista e tenha uma entrada inicial
 def ensure_supervisores_table_and_initial_entry():
     conn = None
     cursor = None
@@ -68,168 +68,39 @@ def ensure_supervisores_table_and_initial_entry():
         cursor = conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS supervisores (
-                id SERIAL PRIMARY KEY,
+                id INT AUTO_INCREMENT PRIMARY KEY,
                 supervisor_operacoes VARCHAR(100) DEFAULT '',
                 coordenador VARCHAR(100) DEFAULT '',
                 supervisor_despacho VARCHAR(100) DEFAULT '',
                 supervisor_atendimento VARCHAR(100) DEFAULT '',
-                last_updated TIMESTAMP WITH TIME ZONE
+                last_updated DATETIME
             )
         """)
         conn.commit()
         cursor.execute("SELECT COUNT(*) FROM supervisores")
         if cursor.fetchone()[0] == 0:
             cursor.execute("""
-                INSERT INTO supervisores (supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento, last_updated)
-                VALUES (%s, %s, %s, %s, NOW())
-            """, ('', '', '', ''))
+                INSERT INTO supervisores (id, supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento, last_updated)
+                VALUES (1, '', '', '', '', NOW())
+            """)
             conn.commit()
             print("Entrada inicial para a tabela 'supervisores' criada com sucesso.")
         else:
             print("Tabela 'supervisores' já existe e possui entradas.")
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         print(f"Erro ao inicializar a tabela 'supervisores': {err}")
         if conn:
             conn.rollback()
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn and conn.is_connected():
             conn.close()
 
-# MODIFICADO: Função para garantir que a tabela 'unidades' exista e inserir as 9 unidades corretas
-def ensure_unidades_table_and_initial_entries():
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS unidades (
-                id SERIAL PRIMARY KEY,
-                nome VARCHAR(100) NOT NULL UNIQUE
-            )
-        """)
-        conn.commit()
-        print("Tabela 'unidades' verificada/criada.")
-
-        # Inserir unidades iniciais se a tabela estiver vazia
-        cursor.execute("SELECT COUNT(*) FROM unidades")
-        if cursor.fetchone()[0] == 0:
-            # ESTA É A LISTA ATUALIZADA DAS 9 UNIDADES:
-            unidades_iniciais = [
-                ('1º BPM',),
-                ('9º BPM',),
-                ('10º BPM',),
-                ('5ª CIPM',),
-                ('6ª CIPM',),
-                ('10ª CIPM',),
-                ('11ª CIPM',),
-                ('BPTRAN',),
-                ('BPCHOQUE',)
-            ]
-            cursor.executemany("INSERT INTO unidades (nome) VALUES (%s)", unidades_iniciais)
-            conn.commit()
-            print("Unidades iniciais inseridas com sucesso.")
-        else:
-            print("Tabela 'unidades' já possui entradas.")
-
-    except psycopg2.Error as err:
-        print(f"Erro ao inicializar a tabela 'unidades': {err}")
-        if conn: conn.rollback()
-    finally:
-        if cursor: cursor.close()
-        if conn and not conn.closed: conn.close()
-
-
-def ensure_viaturas_table():
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS viaturas (
-                id SERIAL PRIMARY KEY,
-                unidade_id INT NOT NULL,
-                prefixo VARCHAR(50) NOT NULL,
-                status VARCHAR(50) NOT NULL,
-                hora_entrada VARCHAR(5) DEFAULT NULL,
-                hora_saida VARCHAR(5) DEFAULT NULL,
-                FOREIGN KEY (unidade_id) REFERENCES unidades(id)
-            )
-        """)
-        conn.commit()
-        print("Tabela 'viaturas' verificada/criada.")
-    except psycopg2.Error as err:
-        print(f"Erro ao inicializar a tabela 'viaturas': {err}")
-        if conn: conn.rollback()
-    finally:
-        if cursor: cursor.close()
-        if conn and not conn.closed: conn.close()
-
-def ensure_contatos_table():
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS contatos (
-                id SERIAL PRIMARY KEY,
-                unidade_id INT NOT NULL,
-                cfp VARCHAR(100) NOT NULL,
-                telefone VARCHAR(20) DEFAULT NULL,
-                FOREIGN KEY (unidade_id) REFERENCES unidades(id)
-            )
-        """)
-        conn.commit()
-        print("Tabela 'contatos' verificada/criada.")
-    except psycopg2.Error as err:
-        print(f"Erro ao inicializar a tabela 'contatos': {err}")
-        if conn: conn.rollback()
-    finally:
-        if cursor: cursor.close()
-        if conn and not conn.closed: conn.close()
-
-def ensure_ocorrencias_cepol_table():
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ocorrencias_cepol (
-                id SERIAL PRIMARY KEY,
-                fato VARCHAR(255) NOT NULL,
-                status VARCHAR(50) NOT NULL,
-                protocolo VARCHAR(100) NOT NULL,
-                ro_cadg VARCHAR(100) NOT NULL,
-                chegada_delegacia VARCHAR(5) NOT NULL,
-                entrega_ro VARCHAR(5) NOT NULL,
-                saida_delegacia VARCHAR(5) NOT NULL,
-                tempo_total_dp VARCHAR(10),
-                tempo_entrega_dp VARCHAR(10),
-                data_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.commit()
-        print("Tabela 'ocorrencias_cepol' verificada/criada.")
-    except psycopg2.Error as err:
-        print(f"Erro ao inicializar a tabela 'ocorrencias_cepol': {err}")
-        if conn: conn.rollback()
-    finally:
-        if cursor: cursor.close()
-        if conn and not conn.closed: conn.close()
-
-# --- CHAMADAS DAS FUNÇÕES DE CRIAÇÃO DE TABELA ---
+# Garante que a tabela de supervisores e a entrada inicial existam ao iniciar o app
 ensure_supervisores_table_and_initial_entry()
-ensure_unidades_table_and_initial_entries() # <-- ESTA FUNÇÃO FOI ATUALIZADA
-ensure_viaturas_table()
-ensure_contatos_table()
-ensure_ocorrencias_cepol_table()
 
-
+# 🔵 Página principal
 @app.route('/', methods=['GET', 'POST'])
 def index():
     conn = None
@@ -245,8 +116,9 @@ def index():
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor = conn.cursor(dictionary=True)
 
+        # --- Lógica de POST para Supervisores ---
         if request.method == 'POST' and 'supervisorOperacoes' in request.form:
             supervisor_operacoes = request.form.get('supervisorOperacoes', '')
             coordenador = request.form.get('coordenador', '')
@@ -268,15 +140,17 @@ def index():
             flash('Supervisores salvos com sucesso!', 'success')
             return redirect(url_for('index'))
 
-        elif request.method == 'POST' and request.form.get('tipo') == 'contato':
+        # --- Lógica de POST para Contato (era CFP, agora 'contatos') ---
+        elif request.method == 'POST' and request.form.get('tipo') == 'contato': # Assumindo que o formulário de contato tenha um campo 'tipo'='contato'
             unidade_id = request.form.get('unidade')
-            nome_cfp = request.form.get('nome')
+            nome_cfp = request.form.get('nome') # Nome do CFP
             telefone = request.form.get('telefone')
 
+            # Verifica se já existe um contato para essa unidade_id
             cursor.execute("SELECT * FROM contatos WHERE unidade_id=%s", (unidade_id,))
             if cursor.fetchone():
                 cursor.execute(
-                    "UPDATE contatos SET cfp=%s, telefone=%s WHERE unidade_id=%s",
+                    "UPDATE contatos SET cfp=%s, telefone=%s WHERE unidade_id=%s", # 'cfp' é o nome da coluna para o nome do CFP
                     (nome_cfp, telefone, unidade_id)
                 )
             else:
@@ -288,19 +162,21 @@ def index():
             flash('Contato salvo com sucesso!', 'success')
             return redirect(url_for('index'))
 
+        # --- Lógica de GET para Supervisores ---
         cursor.execute("SELECT * FROM supervisores WHERE id = 1")
         row_supervisores = cursor.fetchone()
         if row_supervisores:
             supervisores_data = row_supervisores
 
-        cursor.execute("SELECT id, nome FROM unidades ORDER BY nome ASC") # Adicionado ORDER BY
+        # --- Lógica de GET para Unidades, Viaturas, Contatos ---
+        cursor.execute("SELECT id, nome FROM unidades")
         unidades = cursor.fetchall()
 
         cursor.execute("""
-                                SELECT v.id, v.prefixo, v.unidade_id, v.status, u.nome AS unidade_nome
-                                FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
-                                ORDER BY u.nome, v.prefixo
-                                """)
+                       SELECT v.id, v.prefixo, v.unidade_id, v.status, u.nome AS unidade_nome
+                       FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
+                       ORDER BY u.nome, v.prefixo
+                       """)
         viaturas_data = cursor.fetchall()
         viaturas = viaturas_data
 
@@ -310,7 +186,7 @@ def index():
         """)
         contatos = cursor.fetchall()
 
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         flash(f"Database error: {err}", 'danger')
         unidades = []
         viaturas = []
@@ -318,12 +194,13 @@ def index():
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
 
     return render_template('index.html', unidades=unidades, status_options=STATUS_OPTIONS,
                            viaturas=viaturas, contatos=contatos, supervisores=supervisores_data)
 
+# 🚗 Cadastro de viaturas (SEU CÓDIGO EXISTENTE - NÃO ALTERADO)
 @app.route('/cadastro_viaturas', methods=['GET', 'POST'])
 def cadastro_viaturas():
     conn = None
@@ -336,7 +213,7 @@ def cadastro_viaturas():
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor = conn.cursor(dictionary=True)
 
         if request.method == 'POST':
             unidade_id = request.form['unidade_id']
@@ -363,7 +240,7 @@ def cadastro_viaturas():
 
             return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
-        cursor.execute("SELECT id, nome FROM unidades ORDER BY nome ASC") # Adicionado ORDER BY
+        cursor.execute("SELECT id, nome FROM unidades")
         unidades = cursor.fetchall()
 
         if unidade_filtro:
@@ -396,12 +273,12 @@ def cadastro_viaturas():
         """)
         contatos = cursor.fetchall()
 
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         flash(f"Database error loading vehicles: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
 
     return render_template(
@@ -413,50 +290,66 @@ def cadastro_viaturas():
         contagem_viaturas_por_unidade=contagem_viaturas_por_unidade
     )
 
-
 @app.route('/exportar_relatorio_excel')
 def exportar_relatorio_excel():
     conn = None
     cursor = None
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor = conn.cursor(dictionary=True) # Retorna dicionários para fácil conversão em DataFrame
 
+        # Exemplo: Buscar todas as ocorrências. Ajuste esta query se o seu relatório for diferente.
         cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY data_registro DESC")
         ocorrencias = cursor.fetchall()
 
         if not ocorrencias:
             flash('Não há dados para exportar para Excel.', 'info')
-            return redirect(url_for('gerenciar_ocorrencias'))
+            # Você precisa substituir 'nome_da_sua_pagina_de_relatorio' pela rota real da sua página de relatório,
+            # por exemplo, 'relatorios' ou 'gerenciar_ocorrencias'
+            return redirect(url_for('gerenciar_ocorrencias')) # Redirecione para a sua página de relatório
 
-        # --- A CORREÇÃO ESTÁ AQUI: CONVERTER PARA DATAFRAME ---
-        # Convert list of dict-like rows to a list of dicts, then to DataFrame
-        ocorrencias_dicts = [dict(row) for row in ocorrencias]
-        df = pd.DataFrame(ocorrencias_dicts)
-        # --- FIM DA CORREÇÃO ---
+        # Converter a lista de dicionários em um DataFrame do pandas
+        df = pd.DataFrame(ocorrencias)
 
-        from io import BytesIO
+        # Opcional: Renomear colunas para nomes mais amigáveis no Excel
+        # df = df.rename(columns={
+        #    'fato': 'Fato da Ocorrência',
+        #    'status': 'Status da Ocorrência',
+        #    'protocolo': 'Número de Protocolo',
+        #    'ro_cadg': 'R.O. / CADG',
+        #    'chegada_delegacia': 'Chegada na Delegacia',
+        #    'entrega_ro': 'Entrega do R.O.',
+        #    'saida_delegacia': 'Saída da Delegacia',
+        #    'tempo_total_dp': 'Tempo Total na DP',
+        #    'tempo_entrega_dp': 'Tempo de Entrega do R.O. na DP',
+        #    'data_registro': 'Data de Registro'
+        # })
+
+        # Usaremos um BytesIO para não precisar salvar no disco, enviando diretamente
         output = BytesIO()
         writer = pd.ExcelWriter(output, engine='openpyxl')
         df.to_excel(writer, index=False, sheet_name='Ocorrencias')
-        writer.close()
-        output.seek(0)
+        writer.close() # Use writer.close() ao invés de writer.save() para pandas >= 1.3
+        output.seek(0) # Voltar ao início do stream
 
+        # Enviar o arquivo para download
         return send_file(output,
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                          as_attachment=True,
                          download_name='relatorio_ocorrencias_cepol.xlsx')
 
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         flash(f"Erro no banco de dados ao exportar: {err}", 'danger')
     except Exception as e:
         flash(f"Ocorreu um erro inesperado ao exportar: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
 
+    # Em caso de erro, redirecione para a página de relatório
+    # Você precisa substituir 'nome_da_sua_pagina_de_relatorio' pela rota real da sua página de relatório
     return redirect(url_for('gerenciar_ocorrencias'))
 
 @app.route('/editar_contato/<int:contato_id>', methods=['GET'])
@@ -466,15 +359,15 @@ def editar_contato(contato_id):
     contato = None
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM contatos WHERE id = %s", (contato_id,))
         contato = cursor.fetchone()
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         flash(f"Database error: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
 
     if contato is None:
@@ -503,16 +396,17 @@ def editar_contato_post(contato_id):
 
         conn.commit()
         flash('Contato atualizado com sucesso!', 'success')
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         flash(f"Database error updating contact: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
+# ➕ Adicionar contato
 @app.route('/adicionar_contato', methods=['POST'])
 def adicionar_contato():
     conn = None
@@ -534,16 +428,17 @@ def adicionar_contato():
 
         conn.commit()
         flash('Contato cadastrado com sucesso!', 'success')
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         flash(f"Database error adding contact: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
+# ❌ Excluir contato
 @app.route('/excluir_contato/<int:contato_id>', methods=['POST'])
 def excluir_contato(contato_id):
     conn = None
@@ -552,7 +447,7 @@ def excluir_contato(contato_id):
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor = conn.cursor(dictionary=True)
 
         cursor.execute("SELECT unidade_id FROM contatos WHERE id = %s", (contato_id,))
         contato = cursor.fetchone()
@@ -561,16 +456,17 @@ def excluir_contato(contato_id):
         cursor.execute("DELETE FROM contatos WHERE id = %s", (contato_id,))
         conn.commit()
         flash('Contato excluído com sucesso!', 'success')
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         flash(f'Database error deleting contact: {err}', 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
+# ❌ Excluir viatura
 @app.route('/excluir_viatura/<int:viatura_id>', methods=['POST'])
 def excluir_viatura(viatura_id):
     conn = None
@@ -579,7 +475,7 @@ def excluir_viatura(viatura_id):
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor = conn.cursor(dictionary=True)
 
         cursor.execute("SELECT unidade_id FROM viaturas WHERE id = %s", (viatura_id,))
         viatura = cursor.fetchone()
@@ -593,16 +489,17 @@ def excluir_viatura(viatura_id):
         cursor.execute("DELETE FROM viaturas WHERE id = %s", (viatura_id,))
         conn.commit()
         flash('Viatura excluída com sucesso!', 'success')
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         flash(f'Database error deleting vehicle: {err}', 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
+# ✏️ Editar viatura
 @app.route('/editar_viatura/<int:viatura_id>', methods=['GET', 'POST'])
 def editar_viatura(viatura_id):
     conn = None
@@ -613,7 +510,7 @@ def editar_viatura(viatura_id):
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor = conn.cursor(dictionary=True)
 
         if request.method == 'POST':
             unidade_id_for_redirect = request.form['unidade_id']
@@ -640,15 +537,15 @@ def editar_viatura(viatura_id):
         """, (viatura_id,))
         viatura = cursor.fetchone()
 
-        cursor.execute("SELECT id, nome FROM unidades ORDER BY nome ASC") # Adicionado ORDER BY
+        cursor.execute("SELECT id, nome FROM unidades")
         unidades = cursor.fetchall()
 
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         flash(f"Database error editing vehicle: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
 
     if viatura:
@@ -657,8 +554,8 @@ def editar_viatura(viatura_id):
         flash('Viatura não encontrada.', 'danger')
         return redirect(url_for('cadastro_viaturas'))
 
-
 # --- ROTAS PARA OCORRÊNCIAS CEPOL ---
+# 📝 Rota principal para Gerenciar Ocorrências
 @app.route('/ocorrencias', methods=['GET', 'POST'])
 def gerenciar_ocorrencias():
     conn = None
@@ -667,7 +564,7 @@ def gerenciar_ocorrencias():
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor = conn.cursor(dictionary=True)
 
         if request.method == 'POST':
             fato = request.form.get('fato', '').strip()
@@ -717,19 +614,19 @@ def gerenciar_ocorrencias():
         cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY id DESC")
         ocorrencias = cursor.fetchall()
 
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         flash(f"Erro no banco de dados ao gerenciar ocorrências: {err}", 'danger')
     except Exception as e:
         flash(f"Ocorreu um erro inesperado: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
 
     return render_template('ocorrencias_cepol.html', ocorrencias=ocorrencias)
 
-
+# 🗑️ Rota para excluir ocorrência
 @app.route('/excluir_ocorrencia/<int:id>', methods=['POST'])
 def excluir_ocorrencia(id):
     conn = None
@@ -740,17 +637,18 @@ def excluir_ocorrencia(id):
         cursor.execute("DELETE FROM ocorrencias_cepol WHERE id = %s", (id,))
         conn.commit()
         flash('Ocorrência excluída com sucesso!', 'success')
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         flash(f'Erro ao excluir ocorrência: {err}', 'danger')
     except Exception as e:
         flash(f'Ocorreu um erro inesperado ao excluir: {e}', 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
     return redirect(url_for('gerenciar_ocorrencias'))
 
+# ✏️ Rota para editar ocorrência
 @app.route('/editar_ocorrencia/<int:id>', methods=['GET', 'POST'])
 def editar_ocorrencia(id):
     conn = None
@@ -758,7 +656,7 @@ def editar_ocorrencia(id):
     ocorrencia = None
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor = conn.cursor(dictionary=True)
 
         if request.method == 'POST':
             fato = request.form.get('fato', '').strip()
@@ -790,6 +688,7 @@ def editar_ocorrencia(id):
             tempo_total_min = int((saida_dt - chegada_dt).total_seconds() // 60)
             tempo_entrega_min = int((entrega_dt - chegada_dt).total_seconds() // 60)
 
+            # A FUNÇÃO 'format_minutes_to_hh_mm' JÁ ESTÁ DEFINIDA NO TOPO
             tempo_total_dp = format_minutes_to_hh_mm(tempo_total_min)
             tempo_entrega_dp = format_minutes_to_hh_mm(tempo_entrega_min)
 
@@ -804,6 +703,7 @@ def editar_ocorrencia(id):
             flash('Ocorrência atualizada com sucesso!', 'success')
             return redirect(url_for('gerenciar_ocorrencias'))
 
+        # BUSCA DA OCORRÊNCIA (APENAS UMA VEZ)
         cursor.execute("SELECT * FROM ocorrencias_cepol WHERE id = %s", (id,))
         ocorrencia = cursor.fetchone()
 
@@ -811,44 +711,52 @@ def editar_ocorrencia(id):
             flash('Ocorrência não encontrada.', 'danger')
             return redirect(url_for('gerenciar_ocorrencias'))
 
+        # A FUNÇÃO 'ensure_hh_mm_format_for_display' JÁ ESTÁ DEFINIDA NO TOPO
         ocorrencia['chegada_delegacia'] = ensure_hh_mm_format_for_display(ocorrencia.get('chegada_delegacia'))
         ocorrencia['entrega_ro'] = ensure_hh_mm_format_for_display(ocorrencia.get('entrega_ro'))
         ocorrencia['saida_delegacia'] = ensure_hh_mm_format_for_display(ocorrencia.get('saida_delegacia'))
 
-    except psycopg2.Error as err:
+    except mysql.connector.Error as err:
         flash(f"Erro no banco de dados ao carregar/atualizar: {err}", 'danger')
     except Exception as e:
         flash(f"Ocorreu um erro inesperado: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
 
     return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
 
+---
+
+### Rota para Relatórios (COMPLETA E CORRIGIDA)
+
+```python
 @app.route('/relatorios')
 def relatorios():
     conn = None
     cursor = None
 
+    # Inicializa todas as variáveis que serão passadas para o template
     supervisores_string = ""
     cfps_data = []
     viaturas_data = []
     viaturas_por_unidade = []
     viaturas_por_status = []
-    totais_viaturas = {}
+    totais_viaturas = {}  # Inicializa como dicionário vazio
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor = conn.cursor(dictionary=True)
 
+        # 1. Supervisores de Serviço (para exibição em uma única linha no relatório)
         cursor.execute("""
                        SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento
                        FROM supervisores
                        WHERE id = 1
                        """)
-        supervisores_db_row = cursor.fetchone()
+        supervisores_db_row = cursor.fetchone()  # Deve retornar apenas uma linha ou None
 
         if supervisores_db_row:
             supervisores_parts = []
@@ -860,106 +768,134 @@ def relatorios():
                 supervisores_parts.append(f"<strong>Supervisor de Despacho:</strong> {supervisores_db_row['supervisor_despacho']}")
             if supervisores_db_row['supervisor_atendimento']:
                 supervisores_parts.append(f"<strong>Supervisor de Atendimento:</strong> {supervisores_db_row['supervisor_atendimento']}")
-            if supervisores_parts:
+            if supervisores_parts:  # Se há partes válidas, junta-as
                 supervisores_string = " - ".join(supervisores_parts)
             else:
-                supervisores_string = "Nenhum supervisor configurado."
+                supervisores_string = "Nenhum supervisor configurado."  # Caso a linha exista, mas todos os campos estejam vazios
         else:
-            supervisores_string = "Nenhum supervisor cadastrado."
+            supervisores_string = "Nenhum supervisor cadastrado."  # Caso a linha 1 não exista
 
+        # 2. Contatos/CFPs Cadastrados (com nome da unidade, da tabela 'contatos')
         cursor.execute("""
                        SELECT c.id, c.unidade_id, c.cfp AS nome, c.telefone, u.nome AS unidade_nome
                        FROM contatos c
-                       JOIN unidades u ON c.unidade_id = u.id
+                             JOIN unidades u ON c.unidade_id = u.id
                        ORDER BY u.nome, c.cfp
                        """)
         cfps_data = cursor.fetchall()
 
+        # 3. Viaturas Cadastradas (todos os detalhes para listagem)
         cursor.execute("""
                        SELECT v.*, u.nome AS unidade_nome
                        FROM viaturas v
-                       JOIN unidades u ON v.unidade_id = u.id
+                             JOIN unidades u ON v.unidade_id = u.id
                        ORDER BY u.nome, v.prefixo
                        """)
         viaturas_data = cursor.fetchall()
 
+        # 4. Quantidade de Viaturas por Unidade
         cursor.execute("""
                        SELECT u.nome AS unidade_nome, COUNT(v.id) AS quantidade
                        FROM viaturas v
-                       JOIN unidades u ON v.unidade_id = u.id
+                             JOIN unidades u ON v.unidade_id = u.id
                        GROUP BY u.nome
                        ORDER BY u.nome
                        """)
         viaturas_por_unidade = cursor.fetchall()
 
-        viaturas_por_status_raw = {}
-        for status_opt in STATUS_OPTIONS:
-            cursor.execute("SELECT COUNT(*) as quantidade FROM viaturas WHERE status = %s", (status_opt,))
-            count = cursor.fetchone()['quantidade']
-            viaturas_por_status_raw[status_opt] = count
+        # 5. Quantidade de Viaturas por Status
+        cursor.execute("""
+                       SELECT status, COUNT(id) AS quantidade
+                       FROM viaturas
+                       GROUP BY status
+                       ORDER BY status
+                       """)
+        viaturas_por_status = cursor.fetchall()
 
-        viaturas_por_status = [{"status": s, "quantidade": q} for s, q in viaturas_por_status_raw.items()]
+        # 6. Tabela Específica para Funções de Viaturas (totais por tipo, baseado em STATUS)
+        # Note que a lista de status aqui deve ser *exatamente* igual à sua STATUS_OPTIONS
+        cursor.execute(f"""
+                       SELECT SUM(CASE
+                                    WHEN status IN ({', '.join([f"'{s}'" for s in STATUS_OPTIONS])}) THEN 1
+                                    ELSE 0 END) AS total_viaturas_geral,
+                              SUM(CASE WHEN status = 'INTERIOR' THEN 1 ELSE 0 END) AS total_interior,
+                              SUM(CASE WHEN status = 'MOTO' THEN 1 ELSE 0 END) AS total_motos,
+                              SUM(CASE WHEN status IN ('FORÇA TATICA', 'RP', 'TRANSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
+                       FROM viaturas;
+                       """)
+        totais_viaturas_row = cursor.fetchone()
 
-        cursor.execute("SELECT COUNT(*) AS total_geral FROM viaturas")
-        totais_viaturas['total_geral'] = cursor.fetchone()['total_geral']
+        # Calcular a soma total de CAPITAL + INTERIOR + MOTOS no Python
+        if totais_viaturas_row:
+            totais_viaturas = {
+                'total_viaturas_geral': totais_viaturas_row['total_viaturas_geral'],
+                'total_interior': totais_viaturas_row['total_interior'],
+                'total_motos': totais_viaturas_row['total_motos'],
+                'soma_atendimento_copom': totais_viaturas_row['soma_atendimento_copom']
+            }
+            # Adiciona a soma no dicionário
+            # A lógica para 'total_capital_interior_motos' aqui parece somar todos os totais,
+            # incluindo o geral, o que pode não ser o que você quer se "geral" já inclui todos.
+            # Se 'total_viaturas_geral' já é a soma de todos os status listados em STATUS_OPTIONS,
+            # então somar 'total_interior' e 'total_motos' novamente a ela pode duplicar a contagem.
+            # Verifique sua lógica de negócio para esta soma.
+            totais_viaturas['total_capital_interior_motos'] = (
+                    totais_viaturas_row['total_viaturas_geral'] +
+                    totais_viaturas_row['total_interior'] +
+                    totais_viaturas_row['total_motos']
+            )
+        else:
+            # Caso não haja viaturas, inicializa com zeros
+            totais_viaturas = {
+                'total_viaturas_geral': 0, 'total_interior': 0, 'total_motos': 0,
+                'soma_atendimento_copom': 0, 'total_capital_interior_motos': 0
+            }
 
-        cursor.execute("SELECT COUNT(*) AS em_operacao FROM viaturas WHERE status IN ('RP', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ', 'FORÇA TATICA', 'TRANSITO')")
-        totais_viaturas['em_operacao'] = cursor.fetchone()['em_operacao']
-
-        cursor.execute("SELECT COUNT(*) AS em_manutencao FROM viaturas WHERE status IN ('ADM', 'CFP', 'ADJ CFP', 'INTERIOR')")
-        totais_viaturas['em_manutencao'] = cursor.fetchone()['em_manutencao']
-
-
-    except psycopg2.Error as err:
-        flash(f"Database error in reports: {err}", 'danger')
-    except Exception as e:
-        flash(f"An unexpected error occurred in reports: {e}", 'danger')
+    except mysql.connector.Error as err:
+        flash(f"Erro no banco de dados ao carregar relatórios: {err}", 'danger')
+        # Em caso de erro, inicializa todas as variáveis para evitar "NameError" no template
+        supervisores_string = "Erro ao carregar supervisores."
+        cfps_data = []
+        viaturas_data = []
+        viaturas_por_unidade = []
+        viaturas_por_status = []
+        totais_viaturas = {}
     finally:
         if cursor:
             cursor.close()
-        if conn and not conn.closed:
+        if conn:
             conn.close()
 
+    # FINAL DA FUNÇÃO: Retorna o template com TODAS as variáveis
     return render_template('relatorios.html',
                            supervisores_string=supervisores_string,
-                           cfps_data=cfps_data,
-                           viaturas_data=viaturas_data,
+                           cfps=cfps_data,  # Renomeado para 'cfps' para o template
+                           viaturas=viaturas_data,
                            viaturas_por_unidade=viaturas_por_unidade,
                            viaturas_por_status=viaturas_por_status,
                            totais_viaturas=totais_viaturas)
-@app.route('/debug_viaturas_status')
-def debug_viaturas_status():
-    conn = None
-    cursor = None
-    distinct_statuses = []
-    error_message = None
 
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor() # Não precisa de DictCursor para esta consulta simples
+---
 
-        cursor.execute("""
-            SELECT DISTINCT status
-            FROM viaturas
-            WHERE status IS NOT NULL AND status != '' -- Ignora status nulos ou vazios
-            ORDER BY status;
-        """)
-        distinct_statuses = [row[0] for row in cursor.fetchall()]
+### Próximos Passos Cruciais:
 
-    except Exception as e:
-        error_message = f"Erro ao consultar status: {e}"
-        print(f"ERRO DE DEBUG: {error_message}") # Imprime no console do servidor também
+1.  **Cole este código completo** no seu arquivo `app.py`, substituindo tudo o que você tem lá. Certifique-se de que a parte `if __name__ == '__main__': app.run(debug=True)` esteja no **final do arquivo**.
+2.  **Certifique-se de que seu servidor MySQL esteja rodando.** Se você usa **XAMPP/WAMP**, inicie o módulo **MySQL** no painel de controle deles.
+3.  No terminal do VS Code, vá para a pasta do seu projeto (`C:\controle_viaturas`).
+4.  Execute:
+    ```bash
+    flask run
+    ```
 
-    finally:
-        if cursor:
-            cursor.close()
-        if conn and not conn.closed:
-            conn.close()
+Se tudo estiver correto, seu aplicativo Flask deve iniciar e conseguir se conectar ao MySQL. A mensagem "Connection refused" não deve mais aparecer.
 
-    if error_message:
-        return jsonify({"error": error_message}), 500
-    else:
-        return jsonify({"distinct_statuses": distinct_statuses})
+---
 
-if __name__ == '__main__':
-    app.run(debug=True)
+### Uma pequena observação sobre `total_capital_interior_motos`:
+
+Na sua consulta SQL para `totais_viaturas`, você tem `total_viaturas_geral` que soma todas as viaturas com status que estão na sua lista `STATUS_OPTIONS`.
+Abaixo, no Python, você calcula `total_capital_interior_motos` somando `total_viaturas_geral`, `total_interior` e `total_motos`.
+
+Se `total_viaturas_geral` já inclui 'INTERIOR' e 'MOTO', essa soma final pode estar contando duplamente. Verifique se essa é a lógica de negócio que você deseja. Por exemplo, se `total_viaturas_geral` já é o total de todas as viaturas ativas/válidas, e `total_interior` e `total_motos` são apenas subsetores dessa geral, somá-los todos juntos pode inflar o número.
+
+Você pode me dizer se o aplicativo iniciou e está funcionando agora?
