@@ -833,20 +833,20 @@ def relatorios():
     cursor = None
 
     supervisores_string = ""
-    cfps = [] # Renomeado de cfps_data para cfps para corresponder ao template
-    viaturas = [] # Todas as viaturas com unidade para a tabela "Todas as Viaturas"
-    viaturas_por_unidade = [] # Contagem de viaturas por unidade
-    viaturas_por_status = [] # Contagem de viaturas por status
+    cfps = []
+    viaturas = []
+    viaturas_por_unidade = []
+    viaturas_por_status_data = [] # Renomeado para evitar conflito com a string JSON
     totais_viaturas = {
         'total_geral': 0,
-        'capital_cfp_adjcfp': 0, # Viaturas em Capital, CFP e ADJ CFP
-        'interior': 0,           # Viaturas em Interior
-        'moto': 0,               # Viaturas de Moto
-        'soma_atendimento_copom': 0, # Soma de status específicos para COPOM
-        'total_ativos': 0,       # Viaturas com status que indicam ativa
-        'total_inativos': 0      # Viaturas com status que indicam inativa
+        'capital_cfp_adjcfp': 0,
+        'interior': 0,
+        'moto': 0,
+        'soma_atendimento_copom': 0,
+        'total_ativos': 0,
+        'total_inativos': 0
     }
-    unit_color_map = { # Mapeamento de unidades para esquemas de cores
+    unit_color_map = {
         '1º BPM': 'unit-scheme-light',
         '9º BPM': 'unit-scheme-dark',
         '10º BPM': 'unit-scheme-light',
@@ -885,7 +885,6 @@ def relatorios():
         else:
             supervisores_string = "Nenhum supervisor configurado. Por favor, configure na página inicial."
 
-
         # 2. Obter CFPs Cadastrados
         cursor.execute("""
             SELECT c.id, c.cfp AS cfp_nome, c.telefone, u.nome AS unidade_nome
@@ -894,7 +893,6 @@ def relatorios():
             ORDER BY u.nome, c.cfp
         """)
         cfps = cursor.fetchall()
-
 
         # 3. Contagem de Viaturas por Unidade
         cursor.execute("""
@@ -906,7 +904,6 @@ def relatorios():
         """)
         viaturas_por_unidade = cursor.fetchall()
 
-
         # 4. Contagem de Viaturas por Status
         cursor.execute("""
             SELECT status, COUNT(id) AS quantidade
@@ -914,7 +911,10 @@ def relatorios():
             GROUP BY status
             ORDER BY status
         """)
-        viaturas_por_status = cursor.fetchall()
+        # Converta os resultados do cursor para uma lista de dicionários padrão Python
+        # antes de serializar para JSON. Isso garante compatibilidade.
+        viaturas_por_status_raw = cursor.fetchall()
+        viaturas_por_status_data = [dict(row) for row in viaturas_por_status_raw]
 
         # 5. Totais de Viaturas (Lógica CRÍTICA - REVISE CONFORME SEUS CRITÉRIOS)
         # Total Geral
@@ -930,8 +930,7 @@ def relatorios():
             FROM viaturas v
             JOIN unidades u ON v.unidade_id = u.id
             WHERE
-                v.status IN ('FORÇA TATICA', 'RP', 'ADM', 'TRANSITO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ')
-                OR v.status IN ('CFP', 'ADJ CFP')
+                v.status IN ('FORÇA TATICA', 'RP', 'ADM', 'TRANSITO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ', 'CFP', 'ADJ CFP')
                 -- OU UMA CONDIÇÃO POR UNIDADE: u.nome IN ('1º BPM', '9º BPM', '10º BPM')
         """)
         totais_viaturas['capital_cfp_adjcfp'] = cursor.fetchone()[0]
@@ -967,12 +966,11 @@ def relatorios():
         # Um status 'MANUTENCAO', 'INATIVO', 'OCORRENCIA_LONGA' poderia ser inativo.
         cursor.execute("""
             SELECT COUNT(id) FROM viaturas
-            WHERE status IN ('FORÇA TATICA', 'RP', 'TRANSITO', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ')
+            WHERE status IN ('FORÇA TATICA', 'RP', 'TRANSITO', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ', 'CFP', 'ADJ CFP', 'INTERIOR')
         """)
         totais_viaturas['total_ativos'] = cursor.fetchone()[0]
 
         totais_viaturas['total_inativos'] = totais_viaturas['total_geral'] - totais_viaturas['total_ativos']
-
 
         # 6. Todas as Viaturas Cadastradas
         cursor.execute("""
@@ -989,7 +987,7 @@ def relatorios():
         supervisores_string = "Erro ao carregar dados dos supervisores."
         cfps = []
         viaturas_por_unidade = []
-        viaturas_por_status = []
+        viaturas_por_status_data = [] # Vazio em caso de erro
         totais_viaturas = {
             'total_geral': 0, 'capital_cfp_adjcfp': 0, 'interior': 0,
             'moto': 0, 'soma_atendimento_copom': 0, 'total_ativos': 0, 'total_inativos': 0
@@ -1001,12 +999,16 @@ def relatorios():
         if conn and not conn.closed:
             conn.close()
 
+    # Converta viaturas_por_status_data para JSON string antes de passar para o template
+    # Isso é CRÍTICO para que o JavaScript possa parsear corretamente.
+    viaturas_por_status_json = json.dumps(viaturas_por_status_data)
+
     return render_template('relatorios.html',
                            supervisores_string=supervisores_string,
                            cfps=cfps,
                            viaturas=viaturas, # Para a tabela de todas as viaturas
                            viaturas_por_unidade=viaturas_por_unidade,
-                           viaturas_por_status=viaturas_por_status,
+                           viaturas_por_status=viaturas_por_status_json, # AQUI ESTÁ A MUDANÇA PRINCIPAL
                            totais_viaturas=totais_viaturas,
                            unit_color_map=unit_color_map)
 
