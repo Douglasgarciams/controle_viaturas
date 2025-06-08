@@ -927,6 +927,39 @@ def relatorios():
                            viaturas_por_unidade=viaturas_por_unidade,
                            viaturas_por_status=viaturas_por_status,
                            totais_viaturas=totais_viaturas)
+@app.route('/debug_viaturas_status')
+def debug_viaturas_status():
+    conn = None
+    cursor = None
+    distinct_statuses = []
+    error_message = None
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor() # Não precisa de DictCursor para esta consulta simples
+
+        cursor.execute("""
+            SELECT DISTINCT status
+            FROM viaturas
+            WHERE status IS NOT NULL AND status != '' -- Ignora status nulos ou vazios
+            ORDER BY status;
+        """)
+        distinct_statuses = [row[0] for row in cursor.fetchall()]
+
+    except Exception as e:
+        error_message = f"Erro ao consultar status: {e}"
+        print(f"ERRO DE DEBUG: {error_message}") # Imprime no console do servidor também
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and not conn.closed:
+            conn.close()
+
+    if error_message:
+        return jsonify({"error": error_message}), 500
+    else:
+        return jsonify({"distinct_statuses": distinct_statuses})
 
 if __name__ == '__main__':
     app.run(debug=True)
