@@ -296,42 +296,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-8">
-        <div class="card" id="totais-por-categoria-card">
-            <div class="card-header bg-info text-white">
-                Totais por Categoria de Status
-                <button class="btn btn-sm print-block-btn" onclick="printSection('totais-por-categoria-card')">Imprimir Bloco</button>
-            </div>
-            <ul class="list-group list-group-flush">
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Capital (CFP/ADJ CFP):
-                    <span class="badge bg-primary rounded-pill">{{ totais_viaturas.capital_cfp_adjcfp }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Interior:
-                    <span class="badge bg-info rounded-pill">{{ totais_viaturas.interior }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Motos:
-                    <span class="badge bg-success rounded-pill">{{ totais_viaturas.moto }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Atendimento COPOM:
-                    <span class="badge bg-warning text-dark rounded-pill">{{ totais_viaturas.soma_atendimento_copom }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Viaturas Ativas:
-                    <span class="badge bg-success rounded-pill">{{ totais_viaturas.total_ativos }}</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    Viaturas Inativas:
-                    <span class="badge bg-danger rounded-pill">{{ totais_viaturas.total_inativos }}</span>
-                </li>
-            </ul>
-        </div>
-    </div>
-</div>
-
+    
 <div class="row">
     <div class="col-lg-6 col-md-12 mb-4">
         <div class="card" id="viaturas-por-status-card">
