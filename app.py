@@ -833,21 +833,42 @@ def relatorios():
     cursor = None
 
     supervisores_string = ""
-    cfps_data = []
-    viaturas_data = []
-    viaturas_por_unidade = []
-    viaturas_por_status = []
-    totais_viaturas = {}
+    cfps = [] # Renomeado de cfps_data para cfps para corresponder ao template
+    viaturas = [] # Todas as viaturas com unidade para a tabela "Todas as Viaturas"
+    viaturas_por_unidade = [] # Contagem de viaturas por unidade
+    viaturas_por_status = [] # Contagem de viaturas por status
+    totais_viaturas = {
+        'total_geral': 0,
+        'capital_cfp_adjcfp': 0, # Viaturas em Capital, CFP e ADJ CFP
+        'interior': 0,           # Viaturas em Interior
+        'moto': 0,               # Viaturas de Moto
+        'soma_atendimento_copom': 0, # Soma de status específicos para COPOM
+        'total_ativos': 0,       # Viaturas com status que indicam ativa
+        'total_inativos': 0      # Viaturas com status que indicam inativa
+    }
+    unit_color_map = { # Mapeamento de unidades para esquemas de cores
+        '1º BPM': 'unit-scheme-light',
+        '9º BPM': 'unit-scheme-dark',
+        '10º BPM': 'unit-scheme-light',
+        '5ª CIPM': 'unit-scheme-dark',
+        '6ª CIPM': 'unit-scheme-light',
+        '10ª CIPM': 'unit-scheme-dark',
+        '11ª CIPM': 'unit-scheme-light',
+        'BPTRAN': 'unit-scheme-dark',
+        'BPCHOQUE': 'unit-scheme-light'
+        # Adicione mais unidades e seus esquemas de cores conforme necessário
+    }
 
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
+        # 1. Obter dados dos supervisores
         cursor.execute("""
-                                SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento
-                                FROM supervisores
-                                WHERE id = 1
-                                """)
+            SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento
+            FROM supervisores
+            WHERE id = 1
+        """)
         supervisores_db_row = cursor.fetchone()
 
         if supervisores_db_row:
@@ -860,54 +881,134 @@ def relatorios():
                 supervisores_parts.append(f"<strong>Supervisor de Despacho:</strong> {supervisores_db_row['supervisor_despacho']}")
             if supervisores_db_row['supervisor_atendimento']:
                 supervisores_parts.append(f"<strong>Supervisor de Atendimento:</strong> {supervisores_db_row['supervisor_atendimento']}")
-            if supervisores_parts:
-                supervisores_string = " - ".join(supervisores_parts)
-            else:
-                pass # This 'pass' was from your original code, left for consistency.
-                     # If you want to handle the case where all supervisor fields are empty, you can add logic here.
-                
-        # --- Continue com o restante da rota /relatorios, que foi cortada no seu envio ---
-        # Eu completei a parte que você mandou, o resto do código da rota /relatorios viria aqui.
-        # Por exemplo:
-        # cursor.execute("""
-        #    SELECT u.nome AS unidade_nome, c.cfp, c.telefone
-        #    FROM contatos c
-        #    JOIN unidades u ON c.unidade_id = u.id
-        #    ORDER BY u.nome, c.cfp
-        # """)
-        # cfps_data = cursor.fetchall()
-        #
-        # # ... e assim por diante para viaturas_data, viaturas_por_unidade, etc.
-        #
-        # return render_template('relatorios.html',
-        #                        supervisores_string=supervisores_string,
-        #                        cfps_data=cfps_data,
-        #                        viaturas_data=viaturas_data,
-        #                        viaturas_por_unidade=viaturas_por_unidade,
-        #                        viaturas_por_status=viaturas_por_status,
-        #                        totais_viaturas=totais_viaturas)
-        #
-        # No entanto, como você me enviou apenas uma parte final da rota /relatorios,
-        # vou te devolver o que você me enviou com a correção no exportar_relatorio_excel
-        # e a pequena adição de "pass" que faltava no seu if/else.
-        # Se precisar do restante da rota de relatórios, por favor me envie.
+            supervisores_string = "<br>".join(supervisores_parts)
+        else:
+            supervisores_string = "Nenhum supervisor configurado. Por favor, configure na página inicial."
+
+
+        # 2. Obter CFPs Cadastrados
+        cursor.execute("""
+            SELECT c.id, c.cfp AS cfp_nome, c.telefone, u.nome AS unidade_nome
+            FROM contatos c
+            JOIN unidades u ON c.unidade_id = u.id
+            ORDER BY u.nome, c.cfp
+        """)
+        cfps = cursor.fetchall()
+
+
+        # 3. Contagem de Viaturas por Unidade
+        cursor.execute("""
+            SELECT u.nome AS unidade_nome, COUNT(v.id) AS quantidade
+            FROM unidades u
+            LEFT JOIN viaturas v ON u.id = v.unidade_id
+            GROUP BY u.nome
+            ORDER BY u.nome
+        """)
+        viaturas_por_unidade = cursor.fetchall()
+
+
+        # 4. Contagem de Viaturas por Status
+        cursor.execute("""
+            SELECT status, COUNT(id) AS quantidade
+            FROM viaturas
+            GROUP BY status
+            ORDER BY status
+        """)
+        viaturas_por_status = cursor.fetchall()
+
+        # 5. Totais de Viaturas (Lógica CRÍTICA - REVISE CONFORME SEUS CRITÉRIOS)
+        # Total Geral
+        cursor.execute("SELECT COUNT(*) FROM viaturas")
+        totais_viaturas['total_geral'] = cursor.fetchone()[0]
+
+        # Total Capital + CFP + ADJCFP
+        # ATENÇÃO: Ajuste a condição WHERE para refletir *exatamente* como você classifica essas viaturas.
+        # Exemplo: por prefixo, por status, ou por ID de unidade.
+        # Aqui, estou usando uma combinação de status e prefixos como exemplo.
+        cursor.execute("""
+            SELECT COUNT(v.id)
+            FROM viaturas v
+            JOIN unidades u ON v.unidade_id = u.id
+            WHERE
+                v.status IN ('FORÇA TATICA', 'RP', 'ADM', 'TRANSITO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ')
+                OR v.status IN ('CFP', 'ADJ CFP')
+                -- OU UMA CONDIÇÃO POR UNIDADE: u.nome IN ('1º BPM', '9º BPM', '10º BPM')
+        """)
+        totais_viaturas['capital_cfp_adjcfp'] = cursor.fetchone()[0]
+
+        # Total Interior
+        # ATENÇÃO: Ajuste a condição WHERE.
+        cursor.execute("""
+            SELECT COUNT(id) FROM viaturas
+            WHERE status = 'INTERIOR'
+            -- OU UMA CONDIÇÃO POR UNIDADE: JOIN unidades u ON v.unidade_id = u.id WHERE u.nome IN ('Nome Unidade Interior 1', 'Nome Unidade Interior 2')
+        """)
+        totais_viaturas['interior'] = cursor.fetchone()[0]
+
+        # Total Moto
+        # ATENÇÃO: Ajuste a condição WHERE.
+        cursor.execute("""
+            SELECT COUNT(id) FROM viaturas
+            WHERE status = 'MOTO' OR prefixo ILIKE 'MOTO%'
+        """)
+        totais_viaturas['moto'] = cursor.fetchone()[0]
+
+        # Soma Atendimento COPOM (exemplo: viaturas com status específicos de atendimento)
+        # ATENÇÃO: Ajuste a condição WHERE para os status que você considera "Atendimento COPOM".
+        cursor.execute("""
+            SELECT COUNT(id) FROM viaturas
+            WHERE status IN ('FORÇA TATICA', 'RP', 'TRANSITO') -- Exemplo de status
+        """)
+        totais_viaturas['soma_atendimento_copom'] = cursor.fetchone()[0]
+
+        # Viaturas Ativas e Inativas
+        # ATENÇÃO: Defina quais status para você significam "ativo" e "inativo".
+        # Exemplo: 'ADM', 'FORÇA TATICA', 'RP', 'TRANSITO', 'MOTO' são ativos.
+        # Um status 'MANUTENCAO', 'INATIVO', 'OCORRENCIA_LONGA' poderia ser inativo.
+        cursor.execute("""
+            SELECT COUNT(id) FROM viaturas
+            WHERE status IN ('FORÇA TATICA', 'RP', 'TRANSITO', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ')
+        """)
+        totais_viaturas['total_ativos'] = cursor.fetchone()[0]
+
+        totais_viaturas['total_inativos'] = totais_viaturas['total_geral'] - totais_viaturas['total_ativos']
+
+
+        # 6. Todas as Viaturas Cadastradas
+        cursor.execute("""
+            SELECT v.id, u.nome AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
+            FROM viaturas v
+            JOIN unidades u ON v.unidade_id = u.id
+            ORDER BY u.nome, v.prefixo
+        """)
+        viaturas = cursor.fetchall() # Isso preenche a lista 'viaturas' para o template
 
     except psycopg2.Error as err:
         flash(f"Erro no banco de dados ao gerar relatórios: {err}", 'danger')
-    except Exception as e:
-        flash(f"Ocorreu um erro inesperado ao gerar relatórios: {e}", 'danger')
+        # Em caso de erro, passe listas vazias para o template
+        supervisores_string = "Erro ao carregar dados dos supervisores."
+        cfps = []
+        viaturas_por_unidade = []
+        viaturas_por_status = []
+        totais_viaturas = {
+            'total_geral': 0, 'capital_cfp_adjcfp': 0, 'interior': 0,
+            'moto': 0, 'soma_atendimento_copom': 0, 'total_ativos': 0, 'total_inativos': 0
+        }
+        viaturas = [] # Garante que a lista de todas as viaturas também esteja vazia
     finally:
         if cursor:
             cursor.close()
         if conn and not conn.closed:
             conn.close()
 
-    # Retorno padrão para relatorios, se a lógica completa não estiver disponível
-    # ou em caso de erro antes do render_template final da rota completa.
-    # É importante que esta rota tenha um render_template válido.
-    # Vou deixar um redirect temporário para não quebrar, mas idealmente seria um render_template
-    # com todos os dados esperados.
-    return redirect(url_for('index')) # ou render_template de relatorios.html com dados parciais/vazios
+    return render_template('relatorios.html',
+                           supervisores_string=supervisores_string,
+                           cfps=cfps,
+                           viaturas=viaturas, # Para a tabela de todas as viaturas
+                           viaturas_por_unidade=viaturas_por_unidade,
+                           viaturas_por_status=viaturas_por_status,
+                           totais_viaturas=totais_viaturas,
+                           unit_color_map=unit_color_map)
 
 
 if __name__ == '__main__':
