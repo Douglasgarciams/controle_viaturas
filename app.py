@@ -728,10 +728,6 @@ def editar_ocorrencia(id):
 
     return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
 
----
-
-### Rota para Relatórios (COMPLETA E CORRIGIDA)
-
 ```python
 @app.route('/relatorios')
 def relatorios():
