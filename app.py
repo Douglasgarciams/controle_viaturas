@@ -883,134 +883,112 @@ def relatorios():
                 supervisores_parts.append(f"<strong>Supervisor de Despacho:</strong> {supervisores_db_row['supervisor_despacho']}")
             if supervisores_db_row['supervisor_atendimento']:
                 supervisores_parts.append(f"<strong>Supervisor de Atendimento:</strong> {supervisores_db_row['supervisor_atendimento']}")
-            supervisores_string = "<br>".join(supervisores_parts)
-        else:
-            supervisores_string = "Nenhum supervisor configurado. Por favor, configure na página inicial."
-
-        # 2. Obter CFPs Cadastrados
+            supervisores_string = ", ".join(supervisores_parts)
+        
+        # 2. Obter CFPs
         cursor.execute("""
-            SELECT c.id, c.cfp AS cfp_nome, c.telefone, u.nome AS unidade_nome
-            FROM contatos c
-            JOIN unidades u ON c.unidade_id = u.id
+            SELECT c.cfp, u.nome AS unidade_nome, c.telefone
+            FROM contatos c JOIN unidades u ON c.unidade_id = u.id
             ORDER BY u.nome, c.cfp
         """)
         cfps = cursor.fetchall()
 
-        # 3. Contagem de Viaturas por Unidade
+        # 3. Obter viaturas
         cursor.execute("""
-            SELECT u.nome AS unidade_nome, COUNT(v.id) AS quantidade
-            FROM unidades u
-            LEFT JOIN viaturas v ON u.id = v.unidade_id
-            GROUP BY u.nome
-            ORDER BY u.nome
-        """)
-        viaturas_por_unidade = cursor.fetchall()
-
-        # 4. Contagem de Viaturas por Status
-        cursor.execute("""
-            SELECT status, COUNT(id) AS quantidade
-            FROM viaturas
-            GROUP BY status
-            ORDER BY status
-        """)
-        # Corrigindo: Converter resultados do cursor para lista de dicionários padrão
-        viaturas_por_status_raw = cursor.fetchall()
-        viaturas_por_status_list = [dict(row) for row in viaturas_por_status_raw]
-
-        # 5. Totais de Viaturas (Lógica CRÍTICA - REVISE CONFORME SEUS CRITÉRIOS)
-        # Total Geral
-        cursor.execute("SELECT COUNT(*) FROM viaturas")
-        totais_viaturas['total_geral'] = cursor.fetchone()[0]
-
-        # Total Capital + CFP + ADJCFP
-        # ATENÇÃO: Ajuste a condição WHERE para refletir *exatamente* como você classifica essas viaturas.
-        cursor.execute("""
-            SELECT COUNT(v.id)
-            FROM viaturas v
-            WHERE
-                v.status IN ('FORÇA TATICA', 'RP', 'ADM', 'TRANSITO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ', 'CFP', 'ADJ CFP')
-        """)
-        totais_viaturas['capital_cfp_adjcfp'] = cursor.fetchone()[0]
-
-        # Total Interior
-        cursor.execute("""
-            SELECT COUNT(id) FROM viaturas
-            WHERE status = 'INTERIOR'
-        """)
-        totais_viaturas['interior'] = cursor.fetchone()[0]
-
-        # Total Moto
-        cursor.execute("""
-            SELECT COUNT(id) FROM viaturas
-            WHERE status = 'MOTO' OR prefixo ILIKE 'MOTO%'
-        """)
-        totais_viaturas['moto'] = cursor.fetchone()[0]
-
-        # Soma Atendimento COPOM (exemplo: viaturas com status específicos de atendimento)
-        cursor.execute("""
-            SELECT COUNT(id) FROM viaturas
-            WHERE status IN ('FORÇA TATICA', 'RP', 'TRANSITO')
-        """)
-        totais_viaturas['soma_atendimento_copom'] = cursor.fetchone()[0]
-
-        # Viaturas Ativas e Inativas
-        # ATENÇÃO: Defina quais status para você significam "ativo" e "inativo".
-        cursor.execute("""
-            SELECT COUNT(id) FROM viaturas
-            WHERE status IN ('FORÇA TATICA', 'RP', 'TRANSITO', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ', 'CFP', 'ADJ CFP', 'INTERIOR', 'ADM')
-        """)
-        totais_viaturas['total_ativos'] = cursor.fetchone()[0]
-
-        totais_viaturas['total_inativos'] = totais_viaturas['total_geral'] - totais_viaturas['total_ativos']
-
-
-        # 6. Todas as Viaturas Cadastradas
-        cursor.execute("""
-            SELECT v.id, u.nome AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
-            FROM viaturas v
-            JOIN unidades u ON v.unidade_id = u.id
+            SELECT v.prefixo, v.status, u.nome AS unidade_nome, v.hora_entrada, v.hora_saida
+            FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
             ORDER BY u.nome, v.prefixo
         """)
         viaturas = cursor.fetchall()
 
+        # Calcular tempos de viaturas, se aplicável
+        for viatura in viaturas:
+            entrada_str = viatura['hora_entrada']
+            saida_str = viatura['hora_saida']
+
+            if entrada_str and saida_str:
+                try:
+                    entrada_dt = datetime.strptime(entrada_str, "%H:%M")
+                    saida_dt = datetime.strptime(saida_str, "%H:%M")
+
+                    if saida_dt < entrada_dt: # Caso a saída seja no dia seguinte
+                        saida_dt += timedelta(days=1)
+                    
+                    diff_minutes = int((saida_dt - entrada_dt).total_seconds() / 60)
+                    viatura['tempo_patrulha'] = format_minutes_to_hh_mm(diff_minutes)
+                except ValueError:
+                    viatura['tempo_patrulha'] = 'N/A'
+            else:
+                viatura['tempo_patrulha'] = 'N/A'
+
+        # 4. Agrupar viaturas por unidade
+        viaturas_por_unidade_dict = {}
+        for viatura in viaturas:
+            unidade_nome = viatura['unidade_nome']
+            if unidade_nome not in viaturas_por_unidade_dict:
+                viaturas_por_unidade_dict[unidade_nome] = []
+            viaturas_por_unidade_dict[unidade_nome].append(viatura)
+        
+        # Converter para lista de dicionários para facilitar o render_template
+        viaturas_por_unidade = [{"unidade_nome": k, "viaturas": v} for k, v in viaturas_por_unidade_dict.items()]
+        # Ordenar as unidades para exibição consistente
+        viaturas_por_unidade.sort(key=lambda x: x['unidade_nome'])
+
+
+        # 5. Contagem e totais de viaturas por status
+        cursor.execute("""
+            SELECT status, COUNT(*) AS count
+            FROM viaturas
+            GROUP BY status
+            ORDER BY status
+        """)
+        viaturas_por_status_list = cursor.fetchall() # Isso já é uma lista de DictRows
+
+        totais_viaturas['total_geral'] = sum(row['count'] for row in viaturas_por_status_list)
+
+        # Mapeamento de status para categorias de total
+        status_capital_cfp_adjcfp = ['CFP', 'ADJ CFP']
+        status_interior = ['INTERIOR']
+        status_moto = ['MOTO']
+        status_atendimento_copom = ['RP', 'TRANSITO', 'FORÇA TATICA', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ']
+        status_inativos = ['ADM'] # Exemplo de status "inativo" para cálculo
+
+        for row in viaturas_por_status_list:
+            status = row['status'].upper()
+            count = row['count']
+            
+            if status in status_capital_cfp_adjcfp:
+                totais_viaturas['capital_cfp_adjcfp'] += count
+            elif status in status_interior:
+                totais_viaturas['interior'] += count
+            elif status in status_moto:
+                totais_viaturas['moto'] += count
+            elif status in status_atendimento_copom:
+                totais_viaturas['soma_atendimento_copom'] += count
+            
+            if status == 'ADM': # Exemplo, ajuste conforme a definição de "inativo"
+                totais_viaturas['total_inativos'] += count
+            else:
+                totais_viaturas['total_ativos'] += count
+
+
     except psycopg2.Error as err:
-        flash(f"Erro no banco de dados ao gerar relatórios: {err}", 'danger')
-        supervisores_string = "Erro ao carregar dados dos supervisores."
-        cfps = []
-        viaturas_por_unidade = []
-        viaturas_por_status_list = [] # Vazio em caso de erro
-        totais_viaturas = {
-            'total_geral': 0, 'capital_cfp_adjcfp': 0, 'interior': 0,
-            'moto': 0, 'soma_atendimento_copom': 0, 'total_ativos': 0, 'total_inativos': 0
-        }
-        viaturas = [] # Garante que a lista de todas as viaturas também esteja vazia
+        flash(f"Database error loading reports: {err}", 'danger')
+    except Exception as e:
+        flash(f"Ocorreu um erro inesperado: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
         if conn and not conn.closed:
             conn.close()
 
-    # CRÍTICO: Converter a lista de dicionários Python para uma string JSON ANTES de passar para o template.
-    # O filtro |tojson no Jinja2 geralmente faz isso, mas explicitamente é mais robusto
-    # quando lidamos com objetos como DictRow do psycopg2.
-    viaturas_por_status_json = json.dumps(viaturas_por_status_list)
-
     return render_template('relatorios.html',
                            supervisores_string=supervisores_string,
                            cfps=cfps,
-                           viaturas=viaturas,
                            viaturas_por_unidade=viaturas_por_unidade,
-                           viaturas_por_status=viaturas_por_status_json, # Esta é a variável que o JS espera
+                           viaturas_por_status=viaturas_por_status_list, # Passando a lista de DictRows diretamente
                            totais_viaturas=totais_viaturas,
                            unit_color_map=unit_color_map)
 
-
 if __name__ == '__main__':
-    # Certifique-se de que suas variáveis de ambiente estão configuradas
-    # Exemplo (apenas para desenvolvimento local, NÃO USE EM PRODUÇÃO SEM SEGURANÇA):
-    # os.environ['DB_HOST'] = 'localhost'
-    # os.environ['DB_USER'] = 'seu_usuario'
-    # os.environ['DB_PASSWORD'] = 'sua_senha'
-    # os.environ['DB_NAME'] = 'seu_banco'
-    # os.environ['DB_PORT'] = '5432'
     app.run(debug=True)
