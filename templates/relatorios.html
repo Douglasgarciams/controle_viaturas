@@ -292,6 +292,7 @@
                         <button class="btn btn-sm print-block-btn" onclick="printSection('viaturas-por-status-card')">Imprimir Bloco</button>
                     </div>
                     <div class="card-body">
+                        {# ESTA PARTE SERÁ PREENCHIDA DIRETAMENTE PELO JINJA2, SE A VARIAVEL ESTIVER CORRETA #}
                         {% if viaturas_por_status %}
                         <div class="table-responsive">
                             <table class="table table-striped table-hover">
@@ -434,20 +435,18 @@
             });
 
             // Soma para 'Capital+CFP+ADJCFP'
-            // Use os nomes de status exatamente como estão no seu DB/Python
+            // Ajustado para os nomes de status da sua imagem "Viaturas por Status"
             totalCapitalCfpAdjCfp = (statusMap['CFP'] || 0) +
-                                    (statusMap['ADJ CFP'] || 0) +
-                                    (statusMap['FORÇA TATICA'] || 0) +
-                                    (statusMap['RP'] || 0) +
-                                    (statusMap['TRANSITO'] || 0) +
-                                    (statusMap['ROTAC'] || 0) +
-                                    (statusMap['CANIL'] || 0) +
-                                    (statusMap['BOPE'] || 0) +
                                     (statusMap['ESCOLAR/PROMUSE'] || 0) +
-                                    (statusMap['POL.COMUNITARIO'] || 0) +
+                                    (statusMap['FORÇATÁTICA'] || 0) + // Corrigido
                                     (statusMap['JUIZADO'] || 0) +
-                                    (statusMap['TRANSITO/BLITZ'] || 0) +
-                                    (statusMap['ADM'] || 0); // ADM também está incluído na sua lógica do Python
+                                    (statusMap['ROTAC'] || 0) +
+                                    (statusMap['RP'] || 0) +
+                                    (statusMap['TRÂNSITO'] || 0) + // Corrigido
+                                    (statusMap['CANIL'] || 0);
+                                    // Adicione outros status que você espera aqui para essa categoria,
+                                    // usando os nomes EXATOS da sua lista de status, como 'ADJ CFP', 'BOPE', 'POL.COMUNITARIO', 'TRANSITO/BLITZ', 'ADM' se eles existirem.
+                                    // Com base na imagem, eles não aparecem, então não os incluí por padrão.
 
             // Soma para 'Interior'
             totalInterior = (statusMap['INTERIOR'] || 0);
@@ -456,10 +455,10 @@
             totalMotos = (statusMap['MOTO'] || 0);
 
             // Soma para 'Soma Atendimento COPOM (FT, RP, Trânsito)'
-            // Use os nomes de status exatamente como estão no seu DB/Python
-            somaAtendimentoCopom = (statusMap['FORÇA TATICA'] || 0) + (statusMap['RP'] || 0) + (statusMap['TRANSITO'] || 0);
+            // Ajustado para os nomes de status da sua imagem "Viaturas por Status"
+            somaAtendimentoCopom = (statusMap['FORÇATÁTICA'] || 0) + (statusMap['RP'] || 0) + (statusMap['TRÂNSITO'] || 0);
 
-            // Calcula o Total Geral (Este é o total de todos os status na sua lista, que deve ser o mesmo que `totais_viaturas['total_geral']` do Python)
+            // Calcula o Total Geral (Este é o total de todos os status na sua lista)
             let totalGeralCalculado = 0;
             viaturasPorStatusData.forEach(item => {
                 totalGeralCalculado += item.quantidade;
