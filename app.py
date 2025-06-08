@@ -853,19 +853,18 @@ def relatorios():
     cursor = None
 
     supervisores_string = ""
-    # As variáveis abaixo foram declaradas no SEU código.
-    # Elas serão passadas para o template, mesmo que estejam vazias.
+    # Estas são as variáveis que VOCÊ inicializou no seu código original:
     cfps_data = []
     viaturas_data = []
     viaturas_por_unidade = []
     viaturas_por_status = []
-    totais_viaturas = {} # Esta variável estava no SEU código inicial, então ela será passada.
+    totais_viaturas = {} # Inicializada no seu código original, será passada.
 
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-        # Consulta para supervisores (esta parte era do SEU código)
+        # 1. Obter dados dos Supervisores (do seu código)
         cursor.execute("""
             SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento
             FROM supervisores
@@ -888,10 +887,11 @@ def relatorios():
             else:
                 pass # Seu pass original
 
-        # --- AQUI É ONDE SEU CÓDIGO ORIGINAL CONTINUARIA COM AS OUTRAS CONSULTAS ---
-        # Exemplo (VOCÊ PRECISA TER ESSAS CONSULTAS NO SEU CÓDIGO real, caso contrário elas ficarão vazias):
+        # --- INÍCIO: Adicione as consultas SQL para as variáveis que VOCÊ inicializou ---
+        # ATENÇÃO: As consultas abaixo são baseadas em um esquema comum de DB para essas variáveis.
+        # Se seu esquema for diferente, você precisará ajustá-las.
 
-        # PARA cfps_data (usado como 'cfps' no HTML)
+        # Consulta para cfps_data
         cursor.execute("""
             SELECT u.nome AS unidade_nome, c.cfp_nome, c.telefone
             FROM contatos c
@@ -900,7 +900,7 @@ def relatorios():
         """)
         cfps_data = cursor.fetchall()
 
-        # PARA viaturas_data (usado como 'viaturas' no HTML)
+        # Consulta para viaturas_data
         cursor.execute("""
             SELECT v.prefixo, v.status, u.nome AS unidade_nome,
                    TO_CHAR(v.hora_entrada, 'HH24:MI') AS hora_entrada,
@@ -912,7 +912,7 @@ def relatorios():
         """)
         viaturas_data = cursor.fetchall()
 
-        # PARA viaturas_por_unidade (usado como 'viaturas_por_unidade' no HTML)
+        # Consulta para viaturas_por_unidade
         cursor.execute("""
             SELECT u.nome AS unidade_nome, COUNT(v.id) AS quantidade
             FROM viaturas v
@@ -922,20 +922,19 @@ def relatorios():
         """)
         viaturas_por_unidade = cursor.fetchall()
 
-        # PARA viaturas_por_status (usado como 'viaturas_por_status' no HTML para JS)
+        # Consulta para viaturas_por_status (para o gráfico e talvez tabela)
         cursor.execute("""
             SELECT status, COUNT(id) AS quantidade
             FROM viaturas
             GROUP BY status
             ORDER BY status
         """)
-        viaturas_por_status = cursor.fetchall() # Isso será json.dumps() abaixo
+        viaturas_por_status = cursor.fetchall()
 
-        # PARA totais_viaturas (se você tinha uma consulta para isso, adicione-a aqui)
-        # Se essa variável apenas era declarada vazia no seu código original e não tinha uma consulta
-        # para preenchê-la, ela continuará vazia, mas será passada.
-        # Se você tinha uma consulta para 'totais_viaturas' que não me passou, insira-a aqui.
-        # Exemplo hipotético se você tivesse uma consulta para totais_viaturas:
+        # Consulta para totais_viaturas (se esta variável precisa ser preenchida)
+        # Se no seu código original você só declarou 'totais_viaturas = {}' e não tinha uma consulta
+        # para ela, esta consulta pode ser removida se você não quiser essa seção no HTML.
+        # Mas para que ela tenha dados, é preciso uma consulta.
         cursor.execute("""
             SELECT
                 COUNT(CASE WHEN status IN ('CFP', 'ESCOLAR/PROMUSE', 'FORÇATÁTICA', 'JUIZADO', 'ROTAC', 'RP', 'TRÂNSITO', 'CANIL') THEN id END) AS capital_cfp_adjcfp,
@@ -964,37 +963,35 @@ def relatorios():
                 'total_geral': 0, 'soma_atendimento_copom': 0,
                 'total_ativos': 0, 'total_inativos': 0,
             }
-        # Fim da seção de consulta para totais_viaturas
+        # --- FIM: Adicione as consultas SQL para as variáveis que VOCÊ inicializou ---
 
-        # --- A ÚNICA E ESSENCIAL MUDANÇA PARA RENDERIZAR A PÁGINA ---
+
+        # --- ESSA É A ÚNICA MUDANÇA ESSENCIAL PARA EXIBIR O RELATÓRIO ---
         return render_template('relatorios.html',
                                supervisores_string=supervisores_string,
-                               cfps=cfps_data,
-                               viaturas=viaturas_data,
-                               viaturas_por_unidade=viaturas_por_unidade,
-                               # Converte para JSON para o JavaScript no frontend
-                               viaturas_por_status=json.dumps([dict(row) for row in viaturas_por_status]),
-                               totais_viaturas=totais_viaturas,
-                               # unit_color_map não estava no seu código, não será passado.
-                               # Se seu HTML precisar, ele terá que lidar com sua ausência ou você terá que adicioná-lo.
+                               cfps=cfps_data, # Passando a variável que você inicializou
+                               viaturas=viaturas_data, # Passando a variável que você inicializou
+                               viaturas_por_unidade=viaturas_por_unidade, # Passando a variável que você inicializou
+                               # json.dumps é necessário se seu JS no HTML espera um JSON string
+                               viaturas_por_status=json.dumps([dict(row) for row in viaturas_por_status]), # Passando a variável que você inicializou
+                               totais_viaturas=totais_viaturas # Passando a variável que você inicializou
+                               # NÃO ESTOU PASSANDO unit_color_map AQUI
                                )
 
     except psycopg2.Error as err:
         flash(f"Erro no banco de dados ao gerar relatórios: {err}", 'danger')
-        print(f"Erro no DB: {err}") # Ajuda a depurar
-        # Retorna o template mesmo com erro, mas com dados vazios
+        print(f"Erro no DB: {err}")
         return render_template('relatorios.html',
                                supervisores_string="", cfps=[], viaturas=[],
                                viaturas_por_unidade=[], viaturas_por_status="[]",
-                               totais_viaturas={}, unit_color_map={}) # Adicionei unit_color_map vazio aqui para consistência
+                               totais_viaturas={}) # Sem unit_color_map aqui também
     except Exception as e:
         flash(f"Ocorreu um erro inesperado ao gerar relatórios: {e}", 'danger')
-        print(f"Erro geral: {e}") # Ajuda a depurar
-        # Retorna o template mesmo com erro, mas com dados vazios
+        print(f"Erro geral: {e}")
         return render_template('relatorios.html',
                                supervisores_string="", cfps=[], viaturas=[],
                                viaturas_por_unidade=[], viaturas_por_status="[]",
-                               totais_viaturas={}, unit_color_map={}) # Adicionei unit_color_map vazio aqui para consistência
+                               totais_viaturas={}) # Sem unit_color_map aqui também
     finally:
         if cursor:
             cursor.close()
