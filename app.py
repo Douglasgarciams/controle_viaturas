@@ -1,8 +1,6 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash
 from datetime import datetime, timedelta, time
-import mysql.connector # Keep this for MySQL connection
-import pandas as pd # Keep this for Excel export
-from io import BytesIO # Keep this for Excel export
+import mysql.connector
 
 app = Flask(__name__)
 app.secret_key = 'chave-secreta-qualquer' # Mantenha sua chave secreta aqui
@@ -52,7 +50,7 @@ def ensure_hh_mm_format_for_display(time_value):
 
     return '' # Retorna string vazia para qualquer outro caso inválido/vazio
 
-# 🔧 Status disponíveis
+# 🔧 Status disponíveis (CORRIGIDO: 'FORÇA TATICA' com espaço)
 STATUS_OPTIONS = [
     'ADM', 'CFP', 'FORÇA TATICA', 'RP', 'TRANSITO', 'ADJ CFP', 'INTERIOR',
     'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO',
@@ -97,9 +95,12 @@ def ensure_supervisores_table_and_initial_entry():
         if conn and conn.is_connected():
             conn.close()
 
-# Garante que a tabela de supervisores e a entrada inicial existam ao iniciar o app
 ensure_supervisores_table_and_initial_entry()
 
+# --- FIM DO NOVO CÓDIGO PARA SUPERVISORES ---
+
+
+# 🔵 Página principal (ROTA INDEX EXISTENTE, AGORA MODIFICADA PARA INCLUIR SUPERVISORES)
 # 🔵 Página principal
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -112,7 +113,7 @@ def index():
     }
     unidades = []
     viaturas = []
-    contatos = []
+    contatos = [] # Alterado de 'cfps' para 'contatos' para consistência
 
     try:
         conn = get_db_connection()
@@ -169,7 +170,7 @@ def index():
             supervisores_data = row_supervisores
 
         # --- Lógica de GET para Unidades, Viaturas, Contatos ---
-        cursor.execute("SELECT id, nome FROM unidades")
+        cursor.execute("SELECT * FROM unidades")
         unidades = cursor.fetchall()
 
         cursor.execute("""
@@ -178,19 +179,19 @@ def index():
                        ORDER BY u.nome, v.prefixo
                        """)
         viaturas_data = cursor.fetchall()
-        viaturas = viaturas_data
+        viaturas = viaturas_data # CORRIGIDO: Atribui os dados corretamente
 
         cursor.execute("""
             SELECT c.*, u.nome AS unidade_nome
             FROM contatos c JOIN unidades u ON c.unidade_id = u.id
         """)
-        contatos = cursor.fetchall()
+        contatos = cursor.fetchall() # Alterado de 'cfps' para 'contatos'
 
     except mysql.connector.Error as err:
         flash(f"Database error: {err}", 'danger')
         unidades = []
         viaturas = []
-        contatos = []
+        contatos = [] # Alterado de 'cfps' para 'contatos'
     finally:
         if cursor:
             cursor.close()
@@ -198,7 +199,7 @@ def index():
             conn.close()
 
     return render_template('index.html', unidades=unidades, status_options=STATUS_OPTIONS,
-                           viaturas=viaturas, contatos=contatos, supervisores=supervisores_data)
+                           viaturas=viaturas, contatos=contatos, supervisores=supervisores_data) # Alterado de 'cfps' para 'contatos'
 
 # 🚗 Cadastro de viaturas (SEU CÓDIGO EXISTENTE - NÃO ALTERADO)
 @app.route('/cadastro_viaturas', methods=['GET', 'POST'])
@@ -290,13 +291,26 @@ def cadastro_viaturas():
         contagem_viaturas_por_unidade=contagem_viaturas_por_unidade
     )
 
+
+# Certifique-se de que pandas está importado no topo do seu app.py, junto com outros imports
+import pandas as pd
+# Certifique-se de que send_file do Flask também está importado
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
+
+
+# ... (seus outros imports)
+
+# ... (suas funções get_db_connection, format_minutes_to_hh_mm, ensure_hh_mm_format_for_display, etc.)
+
+# ... (suas rotas existentes)
+
 @app.route('/exportar_relatorio_excel')
 def exportar_relatorio_excel():
     conn = None
     cursor = None
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True) # Retorna dicionários para fácil conversão em DataFrame
+        cursor = conn.cursor(dictionary=True)  # Retorna dicionários para fácil conversão em DataFrame
 
         # Exemplo: Buscar todas as ocorrências. Ajuste esta query se o seu relatório for diferente.
         cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY data_registro DESC")
@@ -304,33 +318,33 @@ def exportar_relatorio_excel():
 
         if not ocorrencias:
             flash('Não há dados para exportar para Excel.', 'info')
-            # Você precisa substituir 'nome_da_sua_pagina_de_relatorio' pela rota real da sua página de relatório,
-            # por exemplo, 'relatorios' ou 'gerenciar_ocorrencias'
-            return redirect(url_for('gerenciar_ocorrencias')) # Redirecione para a sua página de relatório
+            return redirect(url_for('nome_da_sua_pagina_de_relatorio'))  # Redirecione para a sua página de relatório
 
         # Converter a lista de dicionários em um DataFrame do pandas
         df = pd.DataFrame(ocorrencias)
 
         # Opcional: Renomear colunas para nomes mais amigáveis no Excel
         # df = df.rename(columns={
-        #    'fato': 'Fato da Ocorrência',
-        #    'status': 'Status da Ocorrência',
-        #    'protocolo': 'Número de Protocolo',
-        #    'ro_cadg': 'R.O. / CADG',
-        #    'chegada_delegacia': 'Chegada na Delegacia',
-        #    'entrega_ro': 'Entrega do R.O.',
-        #    'saida_delegacia': 'Saída da Delegacia',
-        #    'tempo_total_dp': 'Tempo Total na DP',
-        #    'tempo_entrega_dp': 'Tempo de Entrega do R.O. na DP',
-        #    'data_registro': 'Data de Registro'
+        #     'fato': 'Fato da Ocorrência',
+        #     'status': 'Status da Ocorrência',
+        #     'protocolo': 'Número de Protocolo',
+        #     'ro_cadg': 'R.O. / CADG',
+        #     'chegada_delegacia': 'Chegada na Delegacia',
+        #     'entrega_ro': 'Entrega do R.O.',
+        #     'saida_delegacia': 'Saída da Delegacia',
+        #     'tempo_total_dp': 'Tempo Total na DP',
+        #     'tempo_entrega_dp': 'Tempo de Entrega do R.O. na DP',
+        #     'data_registro': 'Data de Registro'
         # })
 
+        # Definir o caminho para salvar o arquivo temporariamente
         # Usaremos um BytesIO para não precisar salvar no disco, enviando diretamente
+        from io import BytesIO
         output = BytesIO()
         writer = pd.ExcelWriter(output, engine='openpyxl')
         df.to_excel(writer, index=False, sheet_name='Ocorrencias')
-        writer.close() # Use writer.close() ao invés de writer.save() para pandas >= 1.3
-        output.seek(0) # Voltar ao início do stream
+        writer.close()  # Use writer.close() ao invés de writer.save() para pandas >= 1.3
+        output.seek(0)  # Voltar ao início do stream
 
         # Enviar o arquivo para download
         return send_file(output,
@@ -349,8 +363,7 @@ def exportar_relatorio_excel():
             conn.close()
 
     # Em caso de erro, redirecione para a página de relatório
-    # Você precisa substituir 'nome_da_sua_pagina_de_relatorio' pela rota real da sua página de relatório
-    return redirect(url_for('gerenciar_ocorrencias'))
+    return redirect(url_for('nome_da_sua_pagina_de_relatorio'))  # Mude para a rota da sua página de relatório
 
 @app.route('/editar_contato/<int:contato_id>', methods=['GET'])
 def editar_contato(contato_id):
@@ -554,6 +567,7 @@ def editar_viatura(viatura_id):
         flash('Viatura não encontrada.', 'danger')
         return redirect(url_for('cadastro_viaturas'))
 
+
 # --- ROTAS PARA OCORRÊNCIAS CEPOL ---
 # 📝 Rota principal para Gerenciar Ocorrências
 @app.route('/ocorrencias', methods=['GET', 'POST'])
@@ -625,6 +639,7 @@ def gerenciar_ocorrencias():
             conn.close()
 
     return render_template('ocorrencias_cepol.html', ocorrencias=ocorrencias)
+
 
 # 🗑️ Rota para excluir ocorrência
 @app.route('/excluir_ocorrencia/<int:id>', methods=['POST'])
@@ -728,7 +743,18 @@ def editar_ocorrencia(id):
 
     return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
 
-```python
+
+# Certifique-se de que todas as suas importações estejam no topo do arquivo
+from flask import Flask, render_template, request, redirect, url_for, flash
+import mysql.connector
+from datetime import datetime
+
+
+# (Seu código existente do Flask e MySQL aqui, incluindo app = Flask(__name__) e as configurações de DB)
+# ...
+
+# --- Rota para Relatórios (CORRIGIDA) ---
+# --- NOVA ROTA PARA RELATÓRIOS (CORRIGIDA) ---
 @app.route('/relatorios')
 def relatorios():
     conn = None
@@ -775,7 +801,7 @@ def relatorios():
         cursor.execute("""
                        SELECT c.id, c.unidade_id, c.cfp AS nome, c.telefone, u.nome AS unidade_nome
                        FROM contatos c
-                             JOIN unidades u ON c.unidade_id = u.id
+                                JOIN unidades u ON c.unidade_id = u.id
                        ORDER BY u.nome, c.cfp
                        """)
         cfps_data = cursor.fetchall()
@@ -784,7 +810,7 @@ def relatorios():
         cursor.execute("""
                        SELECT v.*, u.nome AS unidade_nome
                        FROM viaturas v
-                             JOIN unidades u ON v.unidade_id = u.id
+                                JOIN unidades u ON v.unidade_id = u.id
                        ORDER BY u.nome, v.prefixo
                        """)
         viaturas_data = cursor.fetchall()
@@ -793,7 +819,7 @@ def relatorios():
         cursor.execute("""
                        SELECT u.nome AS unidade_nome, COUNT(v.id) AS quantidade
                        FROM viaturas v
-                             JOIN unidades u ON v.unidade_id = u.id
+                                JOIN unidades u ON v.unidade_id = u.id
                        GROUP BY u.nome
                        ORDER BY u.nome
                        """)
@@ -809,13 +835,15 @@ def relatorios():
         viaturas_por_status = cursor.fetchall()
 
         # 6. Tabela Específica para Funções de Viaturas (totais por tipo, baseado em STATUS)
-        # Note que a lista de status aqui deve ser *exatamente* igual à sua STATUS_OPTIONS
-        cursor.execute(f"""
+        cursor.execute("""
                        SELECT SUM(CASE
-                                    WHEN status IN ({', '.join([f"'{s}'" for s in STATUS_OPTIONS])}) THEN 1
-                                    ELSE 0 END) AS total_viaturas_geral,
-                              SUM(CASE WHEN status = 'INTERIOR' THEN 1 ELSE 0 END) AS total_interior,
-                              SUM(CASE WHEN status = 'MOTO' THEN 1 ELSE 0 END) AS total_motos,
+                                      WHEN status IN
+                                           ('ADM', 'CFP', 'FORÇA TATICA', 'RP', 'TRANSITO', 'ADJ CFP', 'INTERIOR',
+                                            'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO',
+                                            'JUIZADO', 'TRANSITO/BLITZ') THEN 1
+                                      ELSE 0 END)                                                           AS total_viaturas_geral,
+                              SUM(CASE WHEN status = 'INTERIOR' THEN 1 ELSE 0 END)                          AS total_interior,
+                              SUM(CASE WHEN status = 'MOTO' THEN 1 ELSE 0 END)                              AS total_motos, -- Consistente com 'MOTO' na STATUS_OPTIONS, se for 'moto' no DB, ajuste aqui
                               SUM(CASE WHEN status IN ('FORÇA TATICA', 'RP', 'TRANSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
                        FROM viaturas;
                        """)
@@ -830,11 +858,6 @@ def relatorios():
                 'soma_atendimento_copom': totais_viaturas_row['soma_atendimento_copom']
             }
             # Adiciona a soma no dicionário
-            # A lógica para 'total_capital_interior_motos' aqui parece somar todos os totais,
-            # incluindo o geral, o que pode não ser o que você quer se "geral" já inclui todos.
-            # Se 'total_viaturas_geral' já é a soma de todos os status listados em STATUS_OPTIONS,
-            # então somar 'total_interior' e 'total_motos' novamente a ela pode duplicar a contagem.
-            # Verifique sua lógica de negócio para esta soma.
             totais_viaturas['total_capital_interior_motos'] = (
                     totais_viaturas_row['total_viaturas_geral'] +
                     totais_viaturas_row['total_interior'] +
@@ -871,27 +894,9 @@ def relatorios():
                            viaturas_por_status=viaturas_por_status,
                            totais_viaturas=totais_viaturas)
 
----
 
-### Próximos Passos Cruciais:
+# ... (restante do seu app.py, incluindo app.run(debug=True)
 
-1.  **Cole este código completo** no seu arquivo `app.py`, substituindo tudo o que você tem lá. Certifique-se de que a parte `if __name__ == '__main__': app.run(debug=True)` esteja no **final do arquivo**.
-2.  **Certifique-se de que seu servidor MySQL esteja rodando.** Se você usa **XAMPP/WAMP**, inicie o módulo **MySQL** no painel de controle deles.
-3.  No terminal do VS Code, vá para a pasta do seu projeto (`C:\controle_viaturas`).
-4.  Execute:
-    ```bash
-    flask run
-    ```
-
-Se tudo estiver correto, seu aplicativo Flask deve iniciar e conseguir se conectar ao MySQL. A mensagem "Connection refused" não deve mais aparecer.
-
----
-
-### Uma pequena observação sobre `total_capital_interior_motos`:
-
-Na sua consulta SQL para `totais_viaturas`, você tem `total_viaturas_geral` que soma todas as viaturas com status que estão na sua lista `STATUS_OPTIONS`.
-Abaixo, no Python, você calcula `total_capital_interior_motos` somando `total_viaturas_geral`, `total_interior` e `total_motos`.
-
-Se `total_viaturas_geral` já inclui 'INTERIOR' e 'MOTO', essa soma final pode estar contando duplamente. Verifique se essa é a lógica de negócio que você deseja. Por exemplo, se `total_viaturas_geral` já é o total de todas as viaturas ativas/válidas, e `total_interior` e `total_motos` são apenas subsetores dessa geral, somá-los todos juntos pode inflar o número.
-
-Você pode me dizer se o aplicativo iniciou e está funcionando agora?
+# ESTE BLOCO DEVE ESTAR NO FINAL DO SEU ARQUIVO
+if __name__ == '__main__':
+    app.run(debug=True)
