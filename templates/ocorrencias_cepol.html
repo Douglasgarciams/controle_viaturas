@@ -74,21 +74,25 @@
     </div>
 </div>
 
-{# BOTÃO DE IMPRIMIR PARA TODAS AS OCORRÊNCIAS #}
-<div class="text-center mb-3 hide-for-print"> {# Este div/botão não aparecerá na impressão #}
-    <button class="btn btn-primary print-button" onclick="printSection('todas-ocorrencias')">Imprimir Todas as Ocorrências</button>
+{# BOTÕES DE AÇÃO: IMPRIMIR, EXPORTAR E NOVO: LIMPAR TODAS AS OCORRÊNCIAS #}
+<div class="d-flex justify-content-between mb-3 hide-for-print">
+    <div>
+        <button class="btn btn-primary print-button" onclick="printSection('todas-ocorrencias')">Imprimir Todas as Ocorrências</button>
+    </div>
+    <div>
+        <a href="{{ url_for('exportar_relatorio_excel') }}" class="btn btn-success btn-sm me-2">
+            <i class="fas fa-file-excel"></i> Exportar para Excel
+        </a>
+        {# BOTÃO PARA ABRIR O MODAL DE CONFIRMAÇÃO DE EXCLUSÃO EM MASSA #}
+        <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#confirmDeleteAllModal">
+            <i class="fas fa-trash"></i> Limpar Todas as Ocorrências
+        </button>
+    </div>
 </div>
 
 {# NOVO DIV QUE ENVOLVE O TÍTULO E A TABELA DE OCORRÊNCIAS #}
 <div class="print-block" id="todas-ocorrencias">
     <h3 class="mb-3 text-center">Ocorrências Registradas</h3>
-    {# INÍCIO: Adicionar o botão Exportar para Excel AQUI #}
-    <div class="d-flex justify-content-end mb-3">
-        <a href="{{ url_for('exportar_relatorio_excel') }}" class="btn btn-success btn-sm">
-            <i class="fas fa-file-excel"></i> Exportar para Excel
-        </a>
-    </div>
-    {# FIM: Botão Exportar para Excel #}
     <div class="table-responsive shadow-sm rounded">
         <table class="table table-striped table-hover caption-top">
             <caption>Lista completa de ocorrências</caption>
@@ -136,4 +140,27 @@
         </table>
     </div>
 </div> {# FIM DO NOVO DIV QUE ENVOLVE TODAS AS OCORRÊNCIAS #}
+
+{# MODAL DE CONFIRMAÇÃO PARA EXCLUIR TODAS AS OCORRÊNCIAS #}
+<div class="modal fade" id="confirmDeleteAllModal" tabindex="-1" aria-labelledby="confirmDeleteAllModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="confirmDeleteAllModalLabel">Confirmar Exclusão em Massa</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="lead"><strong>ATENÇÃO:</strong> Esta ação apagará <span class="badge bg-danger">{{ ocorrencias|length }}</span> todas as ocorrências registradas no sistema.</p>
+                <p>Esta ação é irreversível. Tem certeza que deseja continuar?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form action="{{ url_for('limpar_todas_ocorrencias') }}" method="POST" class="d-inline">
+                    <button type="submit" class="btn btn-danger">Sim, Apagar Tudo!</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

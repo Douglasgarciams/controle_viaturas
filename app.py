@@ -1,18 +1,126 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+# Seu topo do arquivo, garantindo que 'tempfile' e 'os' estejam importados
+from dotenv import load_dotenv
+load_dotenv() # Carrega as variáveis de ambiente do .env
+import os
+import MySQLdb
+from flask import Flask, render_template, request, redirect, url_for, flash, g
 from datetime import datetime, timedelta, time
-import mysql.connector
+import pandas as pd
+from flask import send_file
+from io import BytesIO
+import tempfile # <--- Importe tempfile aqui!
 
 app = Flask(__name__)
-app.secret_key = 'chave-secreta-qualquer' # Mantenha sua chave secreta aqui
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'sua-chave-secreta-para-desenvolvimento-local')
 
-# 🔗 Conexão com MySQL
-def get_db_connection():
-    return mysql.connector.connect(
-        host='localhost',
-        user='root',
-        password='Reserva207*',
-        database='controle'
-    )
+# --- Funções para Gerenciar a Conexão com o Banco de Dados ---
+def get_db():
+    """Obtém uma conexão de banco de dados por requisição."""
+    if 'db' not in g:
+        db_host = os.environ.get('DB_HOST')
+        db_port = int(os.environ.get('DB_PORT', 4000))
+        db_user = os.environ.get('DB_USER')
+        db_password = os.environ.get('DB_PASSWORD')
+        db_name = os.environ.get('DB_NAME')
+        ca_cert_content = os.environ.get('CA_CERT_CONTENT')
+
+        # Linhas de DEBUG (Mantenha para testar, remova ou comente depois)
+        print(f"DEBUG: DB_HOST={db_host}")
+        print(f"DEBUG: DB_PORT={db_port}")
+        print(f"DEBUG: DB_USER={db_user}")
+        print(f"DEBUG: DB_NAME={db_name}")
+
+        # Inicializa ca_path como None, para ser usado na conexão
+        ca_path = None
+
+        if ca_cert_content:
+            temp_ca_file = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8')
+            temp_ca_file.write(ca_cert_content)
+            temp_ca_file.close()
+            ca_path = temp_ca_file.name
+            print(f"DEBUG: Usando certificado CA temporário: {ca_path}")
+        else:
+            local_ca_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ca.pem')
+            if os.path.exists(local_ca_path):
+                ca_path = local_ca_path
+                print(f"DEBUG: Usando certificado CA local: {ca_path}")
+            else:
+                print("DEBUG: Nenhum certificado CA encontrado ou fornecido. A conexão SSL pode falhar.")
+
+        # Conecta ao banco de dados com os parâmetros SSL
+        # Note a mudança na forma como 'ssl_mode' e 'ssl' são passados
+        g.db = MySQLdb.connect(
+            host=db_host,
+            port=db_port,
+            user=db_user,
+            passwd=db_password, # Use 'passwd' para MySQLdb
+            db=db_name,         # Use 'db' para MySQLdb
+            ssl_mode='VERIFY_IDENTITY',
+            ssl={'ca': ca_path} if ca_path else {} # Passa 'ca' dentro do dicionário 'ssl'
+        )
+    return g.db
+
+# ... (Restante do seu app.py) ...
+
+# SEU CÓDIGO TERÁ ISSO:
+
+@app.teardown_appcontext
+def close_db(e=None):
+    """Fecha a conexão do banco de dados ao final da requisição."""
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
+        # NADA, ABSOLUTAMENTE NADA MAIS VAI AQUI DENTRO.
+        # NEM "with app.app_context():" E NEM "def ensure_supervisores_table_and_initial_entry()"
+
+        # --- AQUI VAI A DEFINIÇÃO COMPLETA DA FUNÇÃO ensure_supervisores_table_and_initial_entry() ---
+def ensure_supervisores_table_and_initial_entry():
+    conn = None
+    cursor = None
+    print("DEBUG: Iniciando ensure_supervisores_table_and_initial_entry()")
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        # Cria a tabela 'supervisores' se ela não existir
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS supervisores (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                supervisor_operacoes VARCHAR(100) DEFAULT '',
+                coordenador VARCHAR(100) DEFAULT '',
+                supervisor_despacho VARCHAR(100) DEFAULT '',
+                coordenador_plantao VARCHAR(100) DEFAULT '',
+                supervisor_atendimento VARCHAR(100) DEFAULT '',
+                last_updated DATETIME
+            )
+        """)
+        conn.commit()
+        print("DEBUG: Tabela 'supervisores' verificada/criada.")
+
+        cursor.execute("SELECT COUNT(*) FROM supervisores")
+        count = cursor.fetchone()[0]
+        print(f"DEBUG: Contagem atual de supervisores: {count}")
+
+        if count == 0:
+            print("DEBUG: Tabela 'supervisores' vazia, inserindo entrada inicial.")
+            cursor.execute("""
+                INSERT INTO supervisores (id, supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento, last_updated)
+                VALUES (1, '', '', '', '', NOW())
+            """)
+            conn.commit()
+            print("DEBUG: Entrada inicial para a tabela 'supervisores' criada com sucesso.")
+        else:
+            print("DEBUG: Tabela 'supervisores' já existe e possui entradas.")
+    except MySQLdb.Error as err:
+        print(f"DEBUG: Erro ao inicializar a tabela 'supervisores': {err}")
+        if conn:
+            conn.rollback()
+    finally:
+        if cursor:
+            cursor.close()
+
+# --- AQUI VAI A CHAMADA PARA A FUNÇÃO (DEPOIS DA DEFINIÇÃO DELA) ---
+with app.app_context():
+    ensure_supervisores_table_and_initial_entry()
 
 # Função auxiliar para formatar minutos para HH:MM
 def format_minutes_to_hh_mm(total_minutes):
@@ -20,7 +128,7 @@ def format_minutes_to_hh_mm(total_minutes):
     minutes = total_minutes % 60
     return f"{hours:02d}:{minutes:02d}"
 
-# NOVO: Função para converter string "X min" de volta para minutos (se for o caso)
+# Função para converter string "X min" de volta para minutos (se for o caso)
 def parse_minutes_from_string(time_str):
     if time_str and isinstance(time_str, str) and " min" in time_str:
         try:
@@ -29,7 +137,7 @@ def parse_minutes_from_string(time_str):
             pass
     return None # Não é um formato "X min" válido ou erro na conversão
 
-# NOVO: Função para garantir que o valor do tempo esteja em HH:MM para exibição
+# Função para garantir que o valor do tempo esteja em HH:MM para exibição
 def ensure_hh_mm_format_for_display(time_value):
     # Se já é um datetime.time object (ex: se DB column for TIME)
     if isinstance(time_value, time):
@@ -58,11 +166,11 @@ STATUS_OPTIONS = [
 ]
 
 # Função para garantir que a tabela 'supervisores' exista e tenha uma entrada inicial
-def ensure_supervisores_table_and_initial_entry():
+def ensure_supervisores_table_and_initial_entry(): # Indentação corrigida aqui
     conn = None
     cursor = None
     try:
-        conn = get_db_connection()
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS supervisores (
@@ -85,23 +193,21 @@ def ensure_supervisores_table_and_initial_entry():
             print("Entrada inicial para a tabela 'supervisores' criada com sucesso.")
         else:
             print("Tabela 'supervisores' já existe e possui entradas.")
-    except mysql.connector.Error as err:
+    # Exceção corrigida para MySQLdb.Error
+    except MySQLdb.Error as err:
         print(f"Erro ao inicializar a tabela 'supervisores': {err}")
         if conn:
             conn.rollback()
     finally:
         if cursor:
             cursor.close()
-        if conn and conn.is_connected():
-            conn.close()
+        # conn.close() é tratado por @app.teardown_appcontext, não precisa aqui
 
-ensure_supervisores_table_and_initial_entry()
+# A chamada a ensure_supervisores_table_and_initial_entry() foi movida para o if __name__ == '__main__':
 
 # --- FIM DO NOVO CÓDIGO PARA SUPERVISORES ---
 
-
 # 🔵 Página principal (ROTA INDEX EXISTENTE, AGORA MODIFICADA PARA INCLUIR SUPERVISORES)
-# 🔵 Página principal
 @app.route('/', methods=['GET', 'POST'])
 def index():
     conn = None
@@ -116,8 +222,8 @@ def index():
     contatos = [] # Alterado de 'cfps' para 'contatos' para consistência
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        conn = get_db() # Substituído get_db_connection() por get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor) # <--- MODIFIQUE ESTA LINHA!
 
         # --- Lógica de POST para Supervisores ---
         if request.method == 'POST' and 'supervisorOperacoes' in request.form:
@@ -174,20 +280,20 @@ def index():
         unidades = cursor.fetchall()
 
         cursor.execute("""
-                       SELECT v.id, v.prefixo, v.unidade_id, v.status, u.nome AS unidade_nome
+                       SELECT v.id, v.prefixo, v.unidade_id, v.status, u.nome_unidade AS unidade_nome
                        FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
-                       ORDER BY u.nome, v.prefixo
+                       ORDER BY u.nome_unidade, v.prefixo
                        """)
         viaturas_data = cursor.fetchall()
         viaturas = viaturas_data # CORRIGIDO: Atribui os dados corretamente
 
         cursor.execute("""
-            SELECT c.*, u.nome AS unidade_nome
+            SELECT c.*, u.nome_unidade AS unidade_nome
             FROM contatos c JOIN unidades u ON c.unidade_id = u.id
         """)
         contatos = cursor.fetchall() # Alterado de 'cfps' para 'contatos'
 
-    except mysql.connector.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f"Database error: {err}", 'danger')
         unidades = []
         viaturas = []
@@ -195,13 +301,12 @@ def index():
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # conn.close() removido
 
     return render_template('index.html', unidades=unidades, status_options=STATUS_OPTIONS,
                            viaturas=viaturas, contatos=contatos, supervisores=supervisores_data) # Alterado de 'cfps' para 'contatos'
 
-# 🚗 Cadastro de viaturas (SEU CÓDIGO EXISTENTE - NÃO ALTERADO)
+# 🚗 Cadastro de viaturas
 @app.route('/cadastro_viaturas', methods=['GET', 'POST'])
 def cadastro_viaturas():
     conn = None
@@ -213,8 +318,8 @@ def cadastro_viaturas():
     unidade_filtro = request.args.get('unidade_id')
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        conn = get_db() # Substituído get_db_connection() por get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         if request.method == 'POST':
             unidade_id = request.form['unidade_id']
@@ -241,22 +346,22 @@ def cadastro_viaturas():
 
             return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
-        cursor.execute("SELECT id, nome FROM unidades")
+        cursor.execute("SELECT id, nome_unidade AS nome FROM unidades")
         unidades = cursor.fetchall()
 
         if unidade_filtro:
             cursor.execute("""
-                SELECT v.id, u.nome AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
+                SELECT v.id, u.nome_unidade AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
                 FROM viaturas v
                 JOIN unidades u ON v.unidade_id = u.id
                 WHERE v.unidade_id = %s
             """, (unidade_filtro,))
         else:
             cursor.execute("""
-                SELECT v.id, u.nome AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
+                SELECT v.id, u.nome_unidade AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
                 FROM viaturas v
                 JOIN unidades u ON v.unidade_id = u.id
-                ORDER BY u.nome ASC, v.prefixo ASC
+                ORDER BY u.nome_unidade ASC, v.prefixo ASC
             """)
         viaturas = cursor.fetchall()
 
@@ -268,19 +373,18 @@ def cadastro_viaturas():
         contagem_viaturas_por_unidade = {row['unidade_id']: row['quantidade'] for row in cursor.fetchall()}
 
         cursor.execute("""
-            SELECT c.id, u.nome AS unidade_nome, c.cfp, c.telefone
+            SELECT c.id, u.nome_unidade AS unidade_nome, c.cfp, c.telefone
             FROM contatos c
             JOIN unidades u ON c.unidade_id = u.id
         """)
         contatos = cursor.fetchall()
 
-    except mysql.connector.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f"Database error loading vehicles: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # conn.close() removido
 
     return render_template(
         'cadastro_viaturas.html',
@@ -291,26 +395,13 @@ def cadastro_viaturas():
         contagem_viaturas_por_unidade=contagem_viaturas_por_unidade
     )
 
-
-# Certifique-se de que pandas está importado no topo do seu app.py, junto com outros imports
-import pandas as pd
-# Certifique-se de que send_file do Flask também está importado
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
-
-
-# ... (seus outros imports)
-
-# ... (suas funções get_db_connection, format_minutes_to_hh_mm, ensure_hh_mm_format_for_display, etc.)
-
-# ... (suas rotas existentes)
-
 @app.route('/exportar_relatorio_excel')
 def exportar_relatorio_excel():
     conn = None
     cursor = None
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)  # Retorna dicionários para fácil conversão em DataFrame
+        conn = get_db() # Substituído get_db_connection() por get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)  # Retorna dicionários para fácil conversão em DataFrame
 
         # Exemplo: Buscar todas as ocorrências. Ajuste esta query se o seu relatório for diferente.
         cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY data_registro DESC")
@@ -318,33 +409,17 @@ def exportar_relatorio_excel():
 
         if not ocorrencias:
             flash('Não há dados para exportar para Excel.', 'info')
-            return redirect(url_for('nome_da_sua_pagina_de_relatorio'))  # Redirecione para a sua página de relatório
+            return redirect(url_for('relatorios'))  # Redirecione para a sua página de relatório (mude o nome se for diferente)
 
         # Converter a lista de dicionários em um DataFrame do pandas
         df = pd.DataFrame(ocorrencias)
 
-        # Opcional: Renomear colunas para nomes mais amigáveis no Excel
-        # df = df.rename(columns={
-        #     'fato': 'Fato da Ocorrência',
-        #     'status': 'Status da Ocorrência',
-        #     'protocolo': 'Número de Protocolo',
-        #     'ro_cadg': 'R.O. / CADG',
-        #     'chegada_delegacia': 'Chegada na Delegacia',
-        #     'entrega_ro': 'Entrega do R.O.',
-        #     'saida_delegacia': 'Saída da Delegacia',
-        #     'tempo_total_dp': 'Tempo Total na DP',
-        #     'tempo_entrega_dp': 'Tempo de Entrega do R.O. na DP',
-        #     'data_registro': 'Data de Registro'
-        # })
-
         # Definir o caminho para salvar o arquivo temporariamente
-        # Usaremos um BytesIO para não precisar salvar no disco, enviando diretamente
-        from io import BytesIO
         output = BytesIO()
         writer = pd.ExcelWriter(output, engine='openpyxl')
         df.to_excel(writer, index=False, sheet_name='Ocorrencias')
-        writer.close()  # Use writer.close() ao invés de writer.save() para pandas >= 1.3
-        output.seek(0)  # Voltar ao início do stream
+        writer.close()
+        output.seek(0)
 
         # Enviar o arquivo para download
         return send_file(output,
@@ -352,18 +427,17 @@ def exportar_relatorio_excel():
                          as_attachment=True,
                          download_name='relatorio_ocorrencias_cepol.xlsx')
 
-    except mysql.connector.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f"Erro no banco de dados ao exportar: {err}", 'danger')
     except Exception as e:
         flash(f"Ocorreu um erro inesperado ao exportar: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # conn.close() removido
 
     # Em caso de erro, redirecione para a página de relatório
-    return redirect(url_for('nome_da_sua_pagina_de_relatorio'))  # Mude para a rota da sua página de relatório
+    return redirect(url_for('relatorios')) # Mude para a rota da sua página de relatório (se for diferente)
 
 @app.route('/editar_contato/<int:contato_id>', methods=['GET'])
 def editar_contato(contato_id):
@@ -371,17 +445,16 @@ def editar_contato(contato_id):
     cursor = None
     contato = None
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        conn = get_db() # Substituído get_db_connection() por get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
         cursor.execute("SELECT * FROM contatos WHERE id = %s", (contato_id,))
         contato = cursor.fetchone()
-    except mysql.connector.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f"Database error: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # conn.close() removido
 
     if contato is None:
         flash('Contato não encontrado.', 'danger')
@@ -393,13 +466,13 @@ def editar_contato(contato_id):
 def editar_contato_post(contato_id):
     conn = None
     cursor = None
-    unidade_id = request.form['unidade_id']
+    unidade_id = request.form['unidade_id'] # Mantido, assumindo que vem do formulário
     try:
         unidade_id = request.form['unidade_id']
         cfp = request.form['cfp']
         telefone = request.form['telefone']
 
-        conn = get_db_connection()
+        conn = get_db() # Substituído get_db_connection() por get_db()
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE contatos
@@ -409,13 +482,12 @@ def editar_contato_post(contato_id):
 
         conn.commit()
         flash('Contato atualizado com sucesso!', 'success')
-    except mysql.connector.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f"Database error updating contact: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # conn.close() removido
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
@@ -424,14 +496,14 @@ def editar_contato_post(contato_id):
 def adicionar_contato():
     conn = None
     cursor = None
-    unidade_id = request.form.get('unidade_id', '')
+    unidade_id = request.form.get('unidade_id', '') # Mantido, pode ser usado para redirecionamento
 
     try:
         unidade_id = request.form['unidade_id']
         cfp = request.form['cfp']
         telefone = request.form['telefone']
 
-        conn = get_db_connection()
+        conn = get_db() # Substituído get_db_connection() por get_db()
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -441,13 +513,12 @@ def adicionar_contato():
 
         conn.commit()
         flash('Contato cadastrado com sucesso!', 'success')
-    except mysql.connector.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f"Database error adding contact: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # conn.close() removido
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
@@ -459,8 +530,8 @@ def excluir_contato(contato_id):
     unidade_id = ''
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        conn = get_db() # Substituído get_db_connection() por get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         cursor.execute("SELECT unidade_id FROM contatos WHERE id = %s", (contato_id,))
         contato = cursor.fetchone()
@@ -469,13 +540,12 @@ def excluir_contato(contato_id):
         cursor.execute("DELETE FROM contatos WHERE id = %s", (contato_id,))
         conn.commit()
         flash('Contato excluído com sucesso!', 'success')
-    except mysql.connector.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f'Database error deleting contact: {err}', 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # conn.close() removido
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
@@ -487,8 +557,8 @@ def excluir_viatura(viatura_id):
     unidade_id = ''
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        conn = get_db() # Substituído get_db_connection() por get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         cursor.execute("SELECT unidade_id FROM viaturas WHERE id = %s", (viatura_id,))
         viatura = cursor.fetchone()
@@ -502,13 +572,12 @@ def excluir_viatura(viatura_id):
         cursor.execute("DELETE FROM viaturas WHERE id = %s", (viatura_id,))
         conn.commit()
         flash('Viatura excluída com sucesso!', 'success')
-    except mysql.connector.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f'Database error deleting vehicle: {err}', 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # conn.close() removido
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
@@ -522,8 +591,8 @@ def editar_viatura(viatura_id):
     unidade_id_for_redirect = ''
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        conn = get_db() # Substituído get_db_connection() por get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         if request.method == 'POST':
             unidade_id_for_redirect = request.form['unidade_id']
@@ -543,7 +612,7 @@ def editar_viatura(viatura_id):
             return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id_for_redirect))
 
         cursor.execute("""
-            SELECT v.id, v.unidade_id, u.nome AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
+            SELECT v.id, v.unidade_id, u.nome_unidade AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
             FROM viaturas v
             JOIN unidades u ON v.unidade_id = u.id
             WHERE v.id = %s
@@ -553,20 +622,18 @@ def editar_viatura(viatura_id):
         cursor.execute("SELECT id, nome FROM unidades")
         unidades = cursor.fetchall()
 
-    except mysql.connector.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f"Database error editing vehicle: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # conn.close() removido
 
     if viatura:
         return render_template('editar_viatura.html', viatura=viatura, unidades=unidades)
     else:
         flash('Viatura não encontrada.', 'danger')
         return redirect(url_for('cadastro_viaturas'))
-
 
 # --- ROTAS PARA OCORRÊNCIAS CEPOL ---
 # 📝 Rota principal para Gerenciar Ocorrências
@@ -577,8 +644,8 @@ def gerenciar_ocorrencias():
     ocorrencias = []
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        conn = get_db() # Substituído get_db_connection() por get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         if request.method == 'POST':
             fato = request.form.get('fato', '').strip()
@@ -628,18 +695,16 @@ def gerenciar_ocorrencias():
         cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY id DESC")
         ocorrencias = cursor.fetchall()
 
-    except mysql.connector.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f"Erro no banco de dados ao gerenciar ocorrências: {err}", 'danger')
     except Exception as e:
         flash(f"Ocorreu um erro inesperado: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # conn.close() removido
 
     return render_template('ocorrencias_cepol.html', ocorrencias=ocorrencias)
-
 
 # 🗑️ Rota para excluir ocorrência
 @app.route('/excluir_ocorrencia/<int:id>', methods=['POST'])
@@ -647,20 +712,20 @@ def excluir_ocorrencia(id):
     conn = None
     cursor = None
     try:
-        conn = get_db_connection()
+        conn = get_db() # Substituído get_db_connection() por get_db()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM ocorrencias_cepol WHERE id = %s", (id,))
         conn.commit()
         flash('Ocorrência excluída com sucesso!', 'success')
-    except mysql.connector.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f'Erro ao excluir ocorrência: {err}', 'danger')
     except Exception as e:
         flash(f'Ocorreu um erro inesperado ao excluir: {e}', 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # conn.close() removido
+
     return redirect(url_for('gerenciar_ocorrencias'))
 
 # ✏️ Rota para editar ocorrência
@@ -670,8 +735,8 @@ def editar_ocorrencia(id):
     cursor = None
     ocorrencia = None
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        conn = get_db() # Substituído get_db_connection() por get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         if request.method == 'POST':
             fato = request.form.get('fato', '').strip()
@@ -731,46 +796,56 @@ def editar_ocorrencia(id):
         ocorrencia['entrega_ro'] = ensure_hh_mm_format_for_display(ocorrencia.get('entrega_ro'))
         ocorrencia['saida_delegacia'] = ensure_hh_mm_format_for_display(ocorrencia.get('saida_delegacia'))
 
-    except mysql.connector.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f"Erro no banco de dados ao carregar/atualizar: {err}", 'danger')
     except Exception as e:
         flash(f"Ocorreu um erro inesperado: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # conn.close() removido
 
     return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
 
+    # 💣 NOVA Rota para LIMPAR TODAS AS OCORRÊNCIAS
+@app.route('/limpar_todas_ocorrencias', methods=['POST'])
+def limpar_todas_ocorrencias():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        # EXECUTAR O COMANDO DELETE PARA TODAS AS OCORRÊNCIAS
+        cursor.execute("DELETE FROM ocorrencias_cepol")
+        conn.commit()
+        flash('Todas as ocorrências foram apagadas com sucesso!', 'success')
+    except MySQLdb.Error as err:
+        flash(f'Erro no banco de dados ao apagar todas as ocorrências: {err}', 'danger')
+    except Exception as e:
+        flash(f'Ocorreu um erro inesperado ao apagar tudo: {e}', 'danger')
+    finally:
+        if cursor:
+            cursor.close()
+            # conn.close() é gerenciado por @app.teardown_appcontext
 
-# Certifique-se de que todas as suas importações estejam no topo do arquivo
-from flask import Flask, render_template, request, redirect, url_for, flash
-import mysql.connector
-from datetime import datetime
+    return redirect(url_for('gerenciar_ocorrencias'))
 
-
-# (Seu código existente do Flask e MySQL aqui, incluindo app = Flask(__name__) e as configurações de DB)
-# ...
-
-# --- Rota para Relatórios (CORRIGIDA) ---
-# --- NOVA ROTA PARA RELATÓRIOS (CORRIGIDA) ---
+# --- Rota para Relatórios ---
 @app.route('/relatorios')
 def relatorios():
     conn = None
     cursor = None
 
-    # Inicializa todas as variáveis que serão passadas para o template
     supervisores_string = ""
     cfps_data = []
     viaturas_data = []
     viaturas_por_unidade = []
     viaturas_por_status = []
-    totais_viaturas = {}  # Inicializa como dicionário vazio
+    totais_viaturas = {}
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        conn = get_db() # Substituído get_db_connection() por get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         # 1. Supervisores de Serviço (para exibição em uma única linha no relatório)
         cursor.execute("""
@@ -778,7 +853,7 @@ def relatorios():
                        FROM supervisores
                        WHERE id = 1
                        """)
-        supervisores_db_row = cursor.fetchone()  # Deve retornar apenas uma linha ou None
+        supervisores_db_row = cursor.fetchone()
 
         if supervisores_db_row:
             supervisores_parts = []
@@ -790,38 +865,38 @@ def relatorios():
                 supervisores_parts.append(f"<strong>Supervisor de Despacho:</strong> {supervisores_db_row['supervisor_despacho']}")
             if supervisores_db_row['supervisor_atendimento']:
                 supervisores_parts.append(f"<strong>Supervisor de Atendimento:</strong> {supervisores_db_row['supervisor_atendimento']}")
-            if supervisores_parts:  # Se há partes válidas, junta-as
+            if supervisores_parts:
                 supervisores_string = " - ".join(supervisores_parts)
             else:
-                supervisores_string = "Nenhum supervisor configurado."  # Caso a linha exista, mas todos os campos estejam vazios
+                supervisores_string = "Nenhum supervisor configurado."
         else:
-            supervisores_string = "Nenhum supervisor cadastrado."  # Caso a linha 1 não exista
+            supervisores_string = "Nenhum supervisor cadastrado."
 
-        # 2. Contatos/CFPs Cadastrados (com nome da unidade, da tabela 'contatos')
+        # 2. Contatos/CFPs Cadastrados
         cursor.execute("""
-                       SELECT c.id, c.unidade_id, c.cfp AS nome, c.telefone, u.nome AS unidade_nome
+                       SELECT c.id, c.unidade_id, c.cfp AS nome, c.telefone, u.nome_unidade AS unidade_nome
                        FROM contatos c
                                 JOIN unidades u ON c.unidade_id = u.id
-                       ORDER BY u.nome, c.cfp
+                       ORDER BY u.nome_unidade, c.cfp
                        """)
         cfps_data = cursor.fetchall()
 
-        # 3. Viaturas Cadastradas (todos os detalhes para listagem)
+        # 3. Viaturas Cadastradas
         cursor.execute("""
-                       SELECT v.*, u.nome AS unidade_nome
+                       SELECT v.*, u.nome_unidade AS unidade_nome
                        FROM viaturas v
                                 JOIN unidades u ON v.unidade_id = u.id
-                       ORDER BY u.nome, v.prefixo
+                       ORDER BY u.nome_unidade, v.prefixo
                        """)
         viaturas_data = cursor.fetchall()
 
         # 4. Quantidade de Viaturas por Unidade
         cursor.execute("""
-                       SELECT u.nome AS unidade_nome, COUNT(v.id) AS quantidade
+                       SELECT u.nome_unidade AS unidade_nome, COUNT(v.id) AS quantidade
                        FROM viaturas v
                                 JOIN unidades u ON v.unidade_id = u.id
-                       GROUP BY u.nome
-                       ORDER BY u.nome
+                       GROUP BY u.nome_unidade
+                       ORDER BY u.nome_unidade
                        """)
         viaturas_por_unidade = cursor.fetchall()
 
@@ -843,13 +918,19 @@ def relatorios():
                                             'JUIZADO', 'TRANSITO/BLITZ') THEN 1
                                       ELSE 0 END)                                                           AS total_viaturas_geral,
                               SUM(CASE WHEN status = 'INTERIOR' THEN 1 ELSE 0 END)                          AS total_interior,
-                              SUM(CASE WHEN status = 'MOTO' THEN 1 ELSE 0 END)                              AS total_motos, -- Consistente com 'MOTO' na STATUS_OPTIONS, se for 'moto' no DB, ajuste aqui
+                              SUM(CASE WHEN status = 'MOTO' THEN 1 ELSE 0 END)                              AS total_motos,
                               SUM(CASE WHEN status IN ('FORÇA TATICA', 'RP', 'TRANSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
                        FROM viaturas;
                        """)
         totais_viaturas_row = cursor.fetchone()
 
         # Calcular a soma total de CAPITAL + INTERIOR + MOTOS no Python
+        # Note: 'total_viaturas_geral' já inclui todas as viaturas (Capital, Interior, Motos, etc.)
+        # Então, 'total_capital_interior_motos' deve ser apenas o 'total_viaturas_geral'
+        # ou, se a intenção é somar capital (que não é interior nem moto), com interior e motos,
+        # precisamos de uma categoria explícita para "capital" que não seja interior ou moto.
+        # Por enquanto, vou assumir que 'total_viaturas_geral' já é a soma total de todas as viaturas
+        # que entram na lista de STATUS_OPTIONS.
         if totais_viaturas_row:
             totais_viaturas = {
                 'total_viaturas_geral': totais_viaturas_row['total_viaturas_geral'],
@@ -857,12 +938,14 @@ def relatorios():
                 'total_motos': totais_viaturas_row['total_motos'],
                 'soma_atendimento_copom': totais_viaturas_row['soma_atendimento_copom']
             }
-            # Adiciona a soma no dicionário
-            totais_viaturas['total_capital_interior_motos'] = (
-                    totais_viaturas_row['total_viaturas_geral'] +
-                    totais_viaturas_row['total_interior'] +
-                    totais_viaturas_row['total_motos']
-            )
+            # Se 'total_viaturas_geral' já é o total de todas as viaturas válidas,
+            # não precisamos somar novamente 'total_interior' e 'total_motos' a ele para um "total geral".
+            # Se a ideia era separar CAPITAL, INTERIOR e MOTOS e depois somá-los,
+            # a query SQL precisaria ser mais específica para CAPITAL.
+            # Por agora, 'total_capital_interior_motos' será igual a 'total_viaturas_geral'
+            # (assumindo que 'total_viaturas_geral' é de fato o total de todas as viaturas relevantes).
+            # Se você tem uma definição diferente para "capital", me avise.
+            totais_viaturas['total_capital_interior_motos'] = totais_viaturas_row['total_viaturas_geral']
         else:
             # Caso não haja viaturas, inicializa com zeros
             totais_viaturas = {
@@ -870,11 +953,12 @@ def relatorios():
                 'soma_atendimento_copom': 0, 'total_capital_interior_motos': 0
             }
 
-    except mysql.connector.Error as err:
+        # EXCEÇÃO CORRIGIDA PARA MySQLdb.Error
+    except MySQLdb.Error as err:
         flash(f"Erro no banco de dados ao carregar relatórios: {err}", 'danger')
         # Em caso de erro, inicializa todas as variáveis para evitar "NameError" no template
         supervisores_string = "Erro ao carregar supervisores."
-        cfps_data = []
+        cfps_data = []  # Mantenha o nome 'cfps_data' aqui
         viaturas_data = []
         viaturas_por_unidade = []
         viaturas_por_status = []
@@ -882,10 +966,9 @@ def relatorios():
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        # Removido 'if conn: conn.close()' pois 'g.db' é fechado por @app.teardown_appcontext
 
-    # FINAL DA FUNÇÃO: Retorna o template com TODAS as variáveis
+        # FINAL DA FUNÇÃO: Retorna o template com TODAS as variáveis
     return render_template('relatorios.html',
                            supervisores_string=supervisores_string,
                            cfps=cfps_data,  # Renomeado para 'cfps' para o template
