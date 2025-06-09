@@ -90,6 +90,20 @@
     </div>
 </div>
 
+<a href="{{ url_for('exportar_historico_ocorrencias_excel') }}" class="btn btn-info btn-sm">
+    <i class="fas fa-file-excel"></i> Exportar Histórico (Excel)
+</a>
+
+<a href="{{ url_for('exportar_ocorrencias_excel') }}" class="btn btn-success btn-sm">
+    <i class="fas fa-file-excel"></i> Exportar Ocorrências Atuais (Excel)
+</a>
+
+<form action="{{ url_for('limpar_todas_ocorrencias') }}" method="POST" class="d-inline">
+    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Tem certeza que deseja limpar todas as ocorrências da visualização principal? Elas serão movidas para o histórico.')">
+        <i class="fas fa-trash-alt"></i> Limpar Ocorrências
+    </button>
+</form>
+
 {# NOVO DIV QUE ENVOLVE O TÍTULO E A TABELA DE OCORRÊNCIAS #}
 <div class="print-block" id="todas-ocorrencias">
     <h3 class="mb-3 text-center">Ocorrências Registradas</h3>

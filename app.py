@@ -9,6 +9,7 @@ import pandas as pd
 from flask import send_file
 from io import BytesIO
 import tempfile # <--- Importe tempfile aqui!
+from flask_login import login_required, UserMixin, LoginManager # Adapte conforme o que você já usa do Flask-Login
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'sua-chave-secreta-para-desenvolvimento-local')
@@ -439,6 +440,52 @@ def exportar_relatorio_excel():
     # Em caso de erro, redirecione para a página de relatório
     return redirect(url_for('relatorios')) # Mude para a rota da sua página de relatório (se for diferente)
 
+# ... (Seus imports e outras rotas, antes de 'if __name__ == "__main__":') ...
+
+@app.route('/exportar_historico_ocorrencias_excel')
+@login_required
+def exportar_historico_ocorrencias_excel():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor) # Para obter resultados como dicionários
+
+        # Seleciona TODAS as ocorrências da tabela de histórico
+        cursor.execute("SELECT id, data, hora, tipo, descricao, viatura, data_arquivamento FROM ocorrencias_arquivadas ORDER BY data_arquivamento DESC, data DESC, hora DESC")
+        registros = cursor.fetchall()
+
+        if not registros:
+            flash('Não há ocorrências no histórico para exportar.', 'warning')
+            return redirect(url_for('gerenciar_ocorrencias'))
+
+        df = pd.DataFrame(registros)
+
+        # Reordenar colunas para melhor visualização (opcional)
+        colunas_ordenadas = ['id', 'data_arquivamento', 'data', 'hora', 'tipo', 'descricao', 'viatura']
+        df = df[colunas_ordenadas]
+
+        output = BytesIO()
+        writer = pd.ExcelWriter(output, engine='xlsxwriter')
+        df.to_excel(writer, index=False, sheet_name='Historico Ocorrencias CEPOL')
+        writer.close() # Use .close() em vez de .save() para pandas >= 1.0 ou xlsxwriter
+
+        output.seek(0) # Retorna o "ponteiro" do BytesIO para o início
+        return send_file(output, as_attachment=True, download_name='historico_ocorrencias_cepol.xlsx',
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    except MySQLdb.Error as e:
+        flash(f"Erro ao exportar histórico de ocorrências: {e}", 'danger')
+        print(f"Erro ao exportar histórico: {e}") # Para debug no terminal
+        return redirect(url_for('gerenciar_ocorrencias'))
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+            if 'db' in g:
+                del g.db
+
 @app.route('/editar_contato/<int:contato_id>', methods=['GET'])
 def editar_contato(contato_id):
     conn = None
@@ -808,25 +855,51 @@ def editar_ocorrencia(id):
     return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
 
     # 💣 NOVA Rota para LIMPAR TODAS AS OCORRÊNCIAS
+# ... (Seus imports e outras rotas) ...
+# ... (Seus imports e outras rotas) ...
+
 @app.route('/limpar_todas_ocorrencias', methods=['POST'])
+@login_required
 def limpar_todas_ocorrencias():
     conn = None
     cursor = None
     try:
         conn = get_db()
         cursor = conn.cursor()
-        # EXECUTAR O COMANDO DELETE PARA TODAS AS OCORRÊNCIAS
-        cursor.execute("DELETE FROM ocorrencias_cepol")
-        conn.commit()
-        flash('Todas as ocorrências foram apagadas com sucesso!', 'success')
-    except MySQLdb.Error as err:
-        flash(f'Erro no banco de dados ao apagar todas as ocorrências: {err}', 'danger')
-    except Exception as e:
-        flash(f'Ocorreu um erro inesperado ao apagar tudo: {e}', 'danger')
+
+        # 1. Seleciona TODAS as ocorrências da tabela principal antes de deletar
+        cursor.execute("SELECT data, hora, tipo, descricao, viatura FROM ocorrencias")
+        ocorrencias_para_arquivar = cursor.fetchall()
+
+        if ocorrencias_para_arquivar:
+            # 2. Insere as ocorrências na tabela de arquivo (ocorrencias_arquivadas)
+            # A coluna `data_arquivamento` será preenchida automaticamente com o timestamp atual
+            sql_insert_archive = """
+                INSERT INTO ocorrencias_arquivadas (data, hora, tipo, descricao, viatura)
+                VALUES (%s, %s, %s, %s, %s)
+            """
+            cursor.executemany(sql_insert_archive, ocorrencias_para_arquivar)
+
+            # 3. Deleta as ocorrências da tabela principal
+            cursor.execute("DELETE FROM ocorrencias")
+
+            conn.commit() # Confirma as alterações no banco de dados
+            flash('Todas as ocorrências foram movidas para o histórico e limpas da visualização principal!', 'success')
+        else:
+            flash('Não há ocorrências na visualização principal para serem limpas.', 'info')
+
+    except MySQLdb.Error as e:
+        if conn:
+            conn.rollback() # Reverte as alterações em caso de erro
+        flash(f"Erro ao limpar ocorrências: {e}", 'danger')
+        print(f"Erro ao limpar ocorrências: {e}") # Para debug no terminal
     finally:
         if cursor:
             cursor.close()
-            # conn.close() é gerenciado por @app.teardown_appcontext
+        if conn:
+            conn.close()
+            if 'db' in g:
+                del g.db # Garante que a conexão seja fechada e removida de g
 
     return redirect(url_for('gerenciar_ocorrencias'))
 
