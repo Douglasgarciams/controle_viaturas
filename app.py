@@ -811,7 +811,25 @@ def editar_ocorrencia(id):
 
     return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
 
-    # 💣 NOVA Rota para LIMPAR TODAS AS OCORRÊNCIAS
+    # 🗑️ Rota para EXCLUIR PERMANENTEMENTE uma única ocorrência
+@app.route('/excluir_ocorrencia/<int:id>', methods=['POST'])
+def excluir_ocorrencia(id):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM ocorrencias_cepol WHERE id = %s", (id,))
+        conn.commit()
+        flash('Ocorrência excluída com sucesso!', 'success')
+    except MySQLdb.Error as err:
+        flash(f'Erro ao excluir ocorrência: {err}', 'danger')
+    finally:
+        if cursor:
+            cursor.close()
+    return redirect(url_for('gerenciar_ocorrencias'))
+
+    # 📦 Rota para ARQUIVAR e LIMPAR TODAS AS OCORRÊNCIAS
 @app.route('/limpar_todas_ocorrencias', methods=['POST'])
 def limpar_todas_ocorrencias():
     conn = None
@@ -819,18 +837,28 @@ def limpar_todas_ocorrencias():
     try:
         conn = get_db()
         cursor = conn.cursor()
-        # EXECUTAR O COMANDO DELETE PARA TODAS AS OCORRÊNCIAS
+        
+        # Inicia uma transação: se algo der errado, nada é feito.
+        conn.begin()
+        
+        # 1. Copia todos os dados da tabela principal para a tabela de histórico
+        cursor.execute("INSERT INTO historico_ocorrencias SELECT * FROM ocorrencias_cepol")
+        
+        # 2. Apaga todos os dados da tabela principal
         cursor.execute("DELETE FROM ocorrencias_cepol")
+        
+        # 3. Confirma as duas operações
         conn.commit()
-        flash('Todas as ocorrências foram apagadas com sucesso!', 'success')
+        
+        flash('Todas as ocorrências foram arquivadas e a tela foi limpa com sucesso!', 'success')
+
     except MySQLdb.Error as err:
-        flash(f'Erro no banco de dados ao apagar todas as ocorrências: {err}', 'danger')
-    except Exception as e:
-        flash(f'Ocorreu um erro inesperado ao apagar tudo: {e}', 'danger')
+        if conn:
+            conn.rollback() # Desfaz a operação em caso de erro
+        flash(f'Erro no banco de dados ao arquivar e limpar: {err}', 'danger')
     finally:
         if cursor:
             cursor.close()
-            # conn.close() é gerenciado por @app.teardown_appcontext
 
     return redirect(url_for('gerenciar_ocorrencias'))
 

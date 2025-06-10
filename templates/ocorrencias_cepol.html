@@ -126,8 +126,8 @@
                     <td>{{ ocorrencia.tempo_entrega_dp }}</td>
                     <td>
                         <a href="{{ url_for('editar_ocorrencia', id=ocorrencia.id) }}" class="btn btn-sm btn-warning mb-1">Editar</a>
-                        <form action="{{ url_for('arquivar_ocorrencia', id=ocorrencia.id) }}" method="POST">
-                            <button type="submit" class="btn btn-warning">Arquivar</button>
+                        <form action="{{ url_for('excluir_ocorrencia', id=ocorrencia.id) }}" method="POST" onsubmit="return confirm('Tem certeza que deseja EXCLUIR esta ocorrência? A ação não pode ser desfeita.');">
+                            <button type="submit" class="btn btn-sm btn-danger" title="Excluir Permanentemente">Excluir</button>
                         </form>
                     </td>
                 </tr>
@@ -141,23 +141,36 @@
     </div>
 </div> {# FIM DO NOVO DIV QUE ENVOLVE TODAS AS OCORRÊNCIAS #}
 
-{# MODAL DE CONFIRMAÇÃO PARA EXCLUIR TODAS AS OCORRÊNCIAS #}
+{# MODAL DE CONFIRMAÇÃO PARA ARQUIVAR E LIMPAR TODAS AS OCORRÊNCIAS #}
 <div class="modal fade" id="confirmDeleteAllModal" tabindex="-1" aria-labelledby="confirmDeleteAllModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg"> {# Aumentei o tamanho do modal com modal-lg #}
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="confirmDeleteAllModalLabel">Confirmar Exclusão em Massa</h5>
+                <h5 class="modal-title" id="confirmDeleteAllModalLabel">Arquivar e Limpar Todas as Ocorrências</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p class="lead"><strong>ATENÇÃO:</strong> Esta ação apagará <span class="badge bg-danger">{{ ocorrencias|length }}</span> todas as ocorrências registradas no sistema.</p>
-                <p>Esta ação é irreversível. Tem certeza que deseja continuar?</p>
+                <p class="lead"><strong>ATENÇÃO:</strong> Este processo é feito em duas etapas e é irreversível.</p>
+                <hr>
+                
+                <h5>Passo 1: Fazer o Backup em Excel</h5>
+                <p>Primeiro, clique no botão abaixo para baixar um arquivo Excel com todas as <span class="badge bg-primary">{{ ocorrencias|length }}</span> ocorrências. Este arquivo é o seu histórico permanente.</p>
+                <a href="{{ url_for('backup_ocorrencias_excel') }}" class="btn btn-primary w-100">
+                    <i class="fas fa-download"></i> Fazer Backup Agora
+                </a>
+                
+                <hr class="my-4">
+
+                <h5>Passo 2: Limpar Ocorrências do Site</h5>
+                <p><strong>Somente após ter feito o backup</strong>, clique no botão abaixo para mover os dados para o histórico e limpar a tela principal.</p>
+                <form action="{{ url_for('limpar_todas_ocorrencias') }}" method="POST" onsubmit="return confirm('CONFIRMAÇÃO FINAL: Você já salvou o backup em Excel? Esta ação vai limpar a tela e não pode ser desfeita.');" class="d-grid">
+                    <button type="submit" class="btn btn-danger w-100">
+                        <i class="fas fa-trash-alt"></i> Sim, Limpar Tudo do Site!
+                    </button>
+                </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <form action="{{ url_for('limpar_todas_ocorrencias') }}" method="POST" class="d-inline">
-                    <button type="submit" class="btn btn-danger">Sim, Apagar Tudo!</button>
-                </form>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar Janela</button>
             </div>
         </div>
     </div>
