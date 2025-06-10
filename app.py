@@ -10,9 +10,54 @@ from flask import send_file
 from io import BytesIO
 import tempfile # <--- Importe tempfile aqui!
 from flask_login import login_required, UserMixin, LoginManager # Adapte conforme o que você já usa do Flask-Login
-
+from flask_login import LoginManager, current_user, UserMixin, login_user, logout_user, login_required
+# ... outras importações
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'sua-chave-secreta-para-desenvolvimento-local')
+
+# Inicialização do Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login' # Define o endpoint para a página de login
+
+# Função user_loader para Flask-Login
+@login_manager.user_loader
+def load_user(user_id):
+    # Esta função é essencial para o Flask-Login saber como recarregar o usuário
+    # a partir do ID armazenado na sessão.
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection() # Certifique-se que esta é sua função para conectar ao DB
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, username, password FROM usuarios WHERE id = %s", (user_id,))
+        user_data = cursor.fetchone()
+
+        if user_data:
+            # Retorne uma instância da sua classe User, que deve herdar de UserMixin
+            return User(user_data['id'], user_data['username'], user_data['password'])
+    except Exception as e:
+        print(f"Erro ao carregar usuário: {e}")
+        return None
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+    return None
+
+# Definição da sua classe User, se ainda não tiver feito
+# Ela deve herdar de UserMixin
+class User(UserMixin):
+    def __init__(self, id, username, password):
+        self.id = id
+        self.username = username
+        self.password = password
+
+    def get_id(self):
+        # O Flask-Login usa este método para obter o ID do usuário
+        return str(self.id)
 
 # --- Funções para Gerenciar a Conexão com o Banco de Dados ---
 def get_db():
