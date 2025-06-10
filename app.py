@@ -321,29 +321,34 @@ def cadastro_viaturas():
         conn = get_db() # Substituído get_db_connection() por get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
-        if request.method == 'POST':
-            unidade_id = request.form['unidade_id']
-            prefixo = request.form['prefixo']
-            status = request.form['status']
-            hora_entrada = request.form.get('hora_entrada')
-            hora_saida = request.form.get('hora_saida')
+        # Dentro da função def cadastro_viaturas():
+    if request.method == 'POST':
+        # Pega os dados do formulário
+        unidade_id = request.form['unidade_id']
+        prefixo = request.form['prefixo'].strip() # Usamos .strip() para remover espaços extras
+        status = request.form['status']
+        hora_entrada = request.form.get('hora_entrada')
+        hora_saida = request.form.get('hora_saida')
 
-            cursor.execute(
-                "SELECT * FROM viaturas WHERE prefixo = %s AND unidade_id = %s",
-                (prefixo, unidade_id)
-            )
-            existente = cursor.fetchone()
+        # Passo 1: Verificar se o prefixo JÁ EXISTE em qualquer unidade
+        cursor.execute("SELECT id FROM viaturas WHERE prefixo = %s", (prefixo,))
+        viatura_existente = cursor.fetchone()
 
-            if existente:
-                flash('Esta viatura já está cadastrada nesta unidade!', 'warning')
-            else:
-                cursor.execute("""
-                    INSERT INTO viaturas (unidade_id, prefixo, status, hora_entrada, hora_saida)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (unidade_id, prefixo, status, hora_entrada, hora_saida))
-                conn.commit()
-                flash('Viatura cadastrada com sucesso!', 'success')
+        # Passo 2: Se a viatura já existe, mostrar erro e parar
+        if viatura_existente:
+            flash(f'O prefixo "{prefixo}" já está cadastrado no sistema. Por favor, verifique.', 'danger')
+            # Redireciona de volta para a página de cadastro, mantendo o filtro de unidade se houver
+            return redirect(url_for('cadastro_viaturas', unidade_id=request.form.get('unidade_filtro', '')))
 
+        # Passo 3: Se não existe, prosseguir com a inserção
+        else:
+            cursor.execute("""
+                INSERT INTO viaturas (unidade_id, prefixo, status, hora_entrada, hora_saida)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (unidade_id, prefixo, status, hora_entrada, hora_saida))
+            conn.commit()
+            flash('Viatura cadastrada com sucesso!', 'success')
+            # Redireciona para a página de cadastro, filtrando pela unidade que acabou de ser cadastrada
             return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
         cursor.execute("SELECT id, nome_unidade AS nome FROM unidades")
