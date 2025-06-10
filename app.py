@@ -951,18 +951,43 @@ def limpar_todas_ocorrencias():
     try:
         conn = get_db()
         cursor = conn.cursor()
-        # EXECUTAR O COMANDO DELETE PARA TODAS AS OCORRÊNCIAS
-        cursor.execute("DELETE FROM ocorrencias_cepol")
-        conn.commit()
-        flash('Todas as ocorrências foram apagadas com sucesso!', 'success')
+
+        # 1. Seleciona TODAS as ocorrências da tabela principal antes de deletar
+        cursor.execute("SELECT data, hora, tipo, descricao, viatura, protocolo, ro_cadg, chegada_delegacia, entrega_ro, saida_delegacia, tempo_total_dp, tempo_entrega_dp FROM ocorrencias_cepol")
+        ocorrencias_para_arquivar = cursor.fetchall()
+
+        if ocorrencias_para_arquivar: # Verifica se há dados para arquivar
+            # 2. Insere as ocorrências na tabela de histórico
+            # CERTIFIQUE-SE DE QUE 'ocorrencias_historico' É O NOME CORRETO DA SUA TABELA DE HISTÓRICO NO DB
+            # E QUE AS COLUNAS CORRESPONDEM ÀS COLUNAS DO SELECT ACIMA E DA SUA TABELA DE HISTÓRICO
+            insert_query = """
+            INSERT INTO ocorrencias_historico (data, hora, tipo, descricao, viatura, protocolo, ro_cadg, chegada_delegacia, entrega_ro, saida_delegacia, tempo_total_dp, tempo_entrega_dp)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            # Prepara os dados para inserção (assumindo que suas colunas são data, hora, etc. na ordem)
+            data_to_insert = [tuple(o.values()) for o in ocorrencias_para_arquivar]
+            cursor.executemany(insert_query, data_to_insert)
+
+            # 3. EXECUTAR O COMANDO DELETE para todas as ocorrências da tabela principal
+            cursor.execute("DELETE FROM ocorrencias_cepol")
+            conn.commit()
+            flash('Todas as ocorrências foram limpas e arquivadas com sucesso!', 'success')
+        else:
+            flash('Não há ocorrências atuais para limpar e arquivar.', 'info')
+
     except MySQLdb.Error as err:
-        flash(f'Erro no banco de dados ao apagar todas as ocorrências: {err}', 'danger')
+        conn.rollback() # Em caso de erro, desfaz as operações
+        print(f'Erro no banco de dados ao apagar/arquivar todas as ocorrências: {err}')
+        flash(f'Erro no banco de dados ao apagar/arquivar todas as ocorrências: {err}', 'danger')
     except Exception as e:
-        flash(f'Ocorreu um erro inesperado ao apagar tudo: {e}', 'danger')
+        conn.rollback() # Em caso de erro, desfaz as operações
+        print(f'Ocorreu um erro inesperado ao apagar/arquivar tudo: {e}')
+        flash(f'Ocorreu um erro inesperado ao apagar/arquivar tudo: {e}', 'danger')
     finally:
         if cursor:
             cursor.close()
-            # conn.close() é gerenciado por @app.teardown_appcontext
+        if conn: # Certifique-se de que a conexão é fechada se for aberta aqui
+            conn.close() # É bom fechar se o get_db() abre uma nova conexão
 
     return redirect(url_for('gerenciar_ocorrencias'))
 
