@@ -578,49 +578,63 @@ def excluir_viatura(viatura_id):
 
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
-# ✏️ Editar viatura
+# ✏️ Editar viatura (com validação de prefixo duplicado)
 @app.route('/editar_viatura/<int:viatura_id>', methods=['GET', 'POST'])
 def editar_viatura(viatura_id):
     conn = None
     cursor = None
-    viatura = None
-    unidades = []
-    unidade_id_for_redirect = ''
-
     try:
-        conn = get_db() # Substituído get_db_connection() por get_db()
+        conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         if request.method == 'POST':
-            unidade_id_for_redirect = request.form['unidade_id']
-            prefixo = request.form['prefixo']
+            # Pega os dados do formulário de edição
+            unidade_id = request.form['unidade_id']
+            prefixo = request.form['prefixo'].strip()
             status = request.form['status']
             hora_entrada = request.form.get('hora_entrada')
             hora_saida = request.form.get('hora_saida')
 
+            # VERIFICAÇÃO: Checa se OUTRA viatura (id != viatura_id) já usa este prefixo
+            cursor.execute(
+                "SELECT id FROM viaturas WHERE prefixo = %s AND id != %s",
+                (prefixo, viatura_id)
+            )
+            outro_com_mesmo_prefixo = cursor.fetchone()
+
+            # Se encontrou outra viatura com o mesmo prefixo, mostra erro
+            if outro_com_mesmo_prefixo:
+                flash(f'O prefixo "{prefixo}" já está em uso por outra viatura. Por favor, escolha outro.', 'danger')
+                # Recarrega a página de edição sem salvar
+                return redirect(url_for('editar_viatura', viatura_id=viatura_id))
+
+            # Se o prefixo é único, prossegue com a atualização
             cursor.execute("""
                 UPDATE viaturas
                 SET unidade_id = %s, prefixo = %s, status = %s, hora_entrada = %s, hora_saida = %s
                 WHERE id = %s
-            """, (unidade_id_for_redirect, prefixo, status, hora_entrada, hora_saida, viatura_id))
-
+            """, (unidade_id, prefixo, status, hora_entrada, hora_saida, viatura_id))
             conn.commit()
+            
             flash('Viatura atualizada com sucesso!', 'success')
-            return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id_for_redirect))
+            return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
-        cursor.execute("""
-            SELECT v.id, v.unidade_id, u.nome_unidade AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
-            FROM viaturas v
-            JOIN unidades u ON v.unidade_id = u.id
-            WHERE v.id = %s
-        """, (viatura_id,))
+        # --- Lógica de GET (para carregar a página de edição pela primeira vez) ---
+        cursor.execute("SELECT * FROM viaturas WHERE id = %s", (viatura_id,))
         viatura = cursor.fetchone()
+
+        if not viatura:
+            flash('Viatura não encontrada.', 'danger')
+            return redirect(url_for('cadastro_viaturas'))
 
         cursor.execute("SELECT id, nome_unidade FROM unidades ORDER BY nome_unidade")
         unidades = cursor.fetchall()
+        
+        return render_template('editar_viatura.html', viatura=viatura, unidades=unidades)
 
-    except MySQLdb.Error as err: # Exceção corrigida
-        flash(f"Database error editing vehicle: {err}", 'danger')
+    except MySQLdb.Error as err:
+        flash(f"Database error on edit page: {err}", 'danger')
+        return redirect(url_for('cadastro_viaturas'))
     finally:
         if cursor:
             cursor.close()
