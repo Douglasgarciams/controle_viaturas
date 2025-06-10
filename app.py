@@ -1061,7 +1061,7 @@ def relatorios():
             df = pd.DataFrame(lista_status_raw)
             
             # Passo de limpeza: removemos espaços em branco do início e fim de cada status
-            df['status'] = df['status'].str.strip()
+            df['status'] = df['status'].fillna('').str.strip()
 
             # Agora, calculamos cada total usando a lógica do Pandas
             total_interior = (df['status'] == 'INTERIOR').sum()
