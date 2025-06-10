@@ -1063,7 +1063,7 @@ cursor.execute("""
         -- Soma de Motos: CONTA APENAS 'MOTO'
         SUM(CASE WHEN TRIM(status) = 'MOTO' THEN 1 ELSE 0 END) AS total_motos,
         
-        -- Soma de Atendimento COPOM: CONTA 'FORÇA TATICA', 'RP', 'TRANSITO'
+        -- Soma de Atendimento COPOM: CONTA 'FORÇATÁTICA', 'RP', 'TRÂNSITO'
         -- ATENÇÃO: Verifique se a grafia abaixo corresponde EXATAMENTE à do seu banco
         SUM(CASE WHEN TRIM(status) IN ('FORÇATÁTICA', 'RP', 'TRÂNSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
     FROM viaturas;
