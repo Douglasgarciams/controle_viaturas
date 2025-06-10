@@ -993,12 +993,12 @@ def zerar_historico_confirmado():
     return redirect(url_for('historico'))
 
 # --- Rota para Relatórios ---
+# --- Rota para Relatórios ---
 @app.route('/relatorios')
 def relatorios():
     conn = None
     cursor = None
     # Define valores padrão para todas as variáveis no início.
-    # Isso evita que a página quebre se ocorrer um erro no banco.
     supervisores_string = "Nenhum supervisor cadastrado."
     cfps_data = []
     viaturas_data = []
@@ -1017,10 +1017,10 @@ def relatorios():
         cursor.execute("SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento FROM supervisores WHERE id = 1")
         supervisores_db_row = cursor.fetchone()
         if supervisores_db_row:
-            # Usando uma forma mais limpa de construir a string
             supervisores_parts = [f"<strong>{k.replace('_', ' ').title()}:</strong> {v}" for k, v in supervisores_db_row.items() if v]
             if supervisores_parts:
                 supervisores_string = " - ".join(supervisores_parts)
+
         # 2. Contatos/CFPs Cadastrados
         cursor.execute("""
             SELECT c.id, u.nome_unidade AS unidade_nome, c.cfp, c.telefone
@@ -1050,25 +1050,16 @@ def relatorios():
         viaturas_por_status = cursor.fetchall()
 
         # 6. Tabela Específica para Funções de Viaturas (com TRIM para garantir a precisão)
-cursor.execute("""
-    SELECT 
-        COUNT(*) AS total_viaturas_geral,
-        
-        -- Soma de Capital: CONTA TUDO, EXCETO 'INTERIOR' e 'MOTO'
-        SUM(CASE WHEN TRIM(status) NOT IN ('INTERIOR', 'MOTO') THEN 1 ELSE 0 END) AS total_capital,
-        
-        -- Soma de Interior: CONTA APENAS 'INTERIOR'
-        SUM(CASE WHEN TRIM(status) = 'INTERIOR' THEN 1 ELSE 0 END) AS total_interior,
-        
-        -- Soma de Motos: CONTA APENAS 'MOTO'
-        SUM(CASE WHEN TRIM(status) = 'MOTO' THEN 1 ELSE 0 END) AS total_motos,
-        
-        -- Soma de Atendimento COPOM: CONTA 'FORÇATÁTICA', 'RP', 'TRÂNSITO'
-        -- ATENÇÃO: Verifique se a grafia abaixo corresponde EXATAMENTE à do seu banco
-        SUM(CASE WHEN TRIM(status) IN ('FORÇATÁTICA', 'RP', 'TRÂNSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
-    FROM viaturas;
-""")
-totais_viaturas_row = cursor.fetchone()
+        cursor.execute("""
+            SELECT 
+                COUNT(*) AS total_viaturas_geral,
+                SUM(CASE WHEN TRIM(status) NOT IN ('INTERIOR', 'MOTO') THEN 1 ELSE 0 END) AS total_capital,
+                SUM(CASE WHEN TRIM(status) = 'INTERIOR' THEN 1 ELSE 0 END) AS total_interior,
+                SUM(CASE WHEN TRIM(status) = 'MOTO' THEN 1 ELSE 0 END) AS total_motos,
+                SUM(CASE WHEN TRIM(status) IN ('FORÇATÁTICA', 'RP', 'TRÂNSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
+            FROM viaturas;
+        """)
+        totais_viaturas_row = cursor.fetchone()
 
         # Processa os resultados da consulta de totais
         if totais_viaturas_row:
@@ -1077,17 +1068,16 @@ totais_viaturas_row = cursor.fetchone()
             totais_viaturas['total_interior'] = totais_viaturas_row.get('total_interior', 0)
             totais_viaturas['total_motos'] = totais_viaturas_row.get('total_motos', 0)
             totais_viaturas['soma_atendimento_copom'] = totais_viaturas_row.get('soma_atendimento_copom', 0)
-            # O total geral já é calculado pela query com COUNT(*)
             totais_viaturas['total_capital_interior_motos'] = totais_viaturas_row.get('total_viaturas_geral', 0)
             
     except MySQLdb.Error as err:
         flash(f"Erro no banco de dados ao carregar relatórios: {err}", 'danger')
-        # A inicialização no início da função já garante que a página não quebre.
         
     finally:
         if cursor:
             cursor.close()
-    # O return fica fora do try/except/finally, garantindo que a página sempre seja renderizada
+
+    # O return fica fora do try/except/finally
     return render_template('relatorios.html',
                            supervisores_string=supervisores_string,
                            cfps=cfps_data,
