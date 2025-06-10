@@ -921,6 +921,41 @@ def historico():
     # Renderiza um NOVO template chamado historico.html
     return render_template('historico.html', ocorrencias=historico_ocorrencias)
 
+    # 📜 Rota para exportar o HISTÓRICO COMPLETO para Excel
+# 📜 Rota para exportar o HISTÓRICO COMPLETO para Excel
+@app.route('/exportar_historico_excel')
+def exportar_historico_excel():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+        # Seleciona da tabela de HISTÓRICO
+        cursor.execute("SELECT * FROM historico_ocorrencias ORDER BY id ASC")
+        ocorrencias = cursor.fetchall()
+
+        if not ocorrencias:
+            flash('Não há dados no histórico para exportar.', 'info')
+            return redirect(url_for('historico'))
+
+        df = pd.DataFrame(ocorrencias)
+        output = BytesIO()
+        nome_arquivo = f"historico_completo_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+        df.to_excel(output, index=False, sheet_name='Historico_Completo')
+        output.seek(0)
+
+        return send_file(output,
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         as_attachment=True,
+                         download_name=nome_arquivo)
+
+    except Exception as e:
+        flash(f"Ocorreu um erro ao gerar o Excel do histórico: {e}", 'danger')
+        return redirect(url_for('historico'))
+    finally:
+        if cursor:
+            cursor.close()
+
 # --- Rota para Relatórios ---
 @app.route('/relatorios')
 def relatorios():
