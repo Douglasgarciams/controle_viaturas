@@ -862,6 +862,44 @@ def limpar_todas_ocorrencias():
 
     return redirect(url_for('gerenciar_ocorrencias'))
 
+    # 📄 Rota para fazer o BACKUP de todas as ocorrências para Excel ANTES de limpar
+@app.route('/backup_ocorrencias_excel')
+def backup_ocorrencias_excel():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+
+        cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY id ASC")
+        ocorrencias = cursor.fetchall()
+
+        if not ocorrencias:
+            flash('Não há ocorrências para fazer backup.', 'info')
+            return redirect(url_for('gerenciar_ocorrencias'))
+
+        df = pd.DataFrame(ocorrencias)
+        output = BytesIO() # Cria um arquivo em memória
+
+        # Gera o nome do arquivo com a data e hora atual
+        nome_arquivo = f"backup_ocorrencias_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
+
+        df.to_excel(output, index=False, sheet_name='Backup_Ocorrencias')
+        output.seek(0)
+        
+        # Envia o arquivo em memória para o navegador do usuário fazer o download
+        return send_file(output,
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         as_attachment=True,
+                         download_name=nome_arquivo)
+
+    except Exception as e:
+        flash(f"Ocorreu um erro ao gerar o backup em Excel: {e}", 'danger')
+        return redirect(url_for('gerenciar_ocorrencias'))
+    finally:
+        if cursor:
+            cursor.close()
+
 # --- Rota para Relatórios ---
 @app.route('/relatorios')
 def relatorios():
