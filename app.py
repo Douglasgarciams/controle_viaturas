@@ -9,55 +9,9 @@ import pandas as pd
 from flask import send_file
 from io import BytesIO
 import tempfile # <--- Importe tempfile aqui!
-from flask_login import login_required, UserMixin, LoginManager # Adapte conforme o que você já usa do Flask-Login
-from flask_login import LoginManager, current_user, UserMixin, login_user, logout_user, login_required
-# ... outras importações
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'sua-chave-secreta-para-desenvolvimento-local')
-
-# Inicialização do Flask-Login
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login' # Define o endpoint para a página de login
-
-# Função user_loader para Flask-Login
-@login_manager.user_loader
-def load_user(user_id):
-    # Esta função é essencial para o Flask-Login saber como recarregar o usuário
-    # a partir do ID armazenado na sessão.
-
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection() # Certifique-se que esta é sua função para conectar ao DB
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id, username, password FROM usuarios WHERE id = %s", (user_id,))
-        user_data = cursor.fetchone()
-
-        if user_data:
-            # Retorne uma instância da sua classe User, que deve herdar de UserMixin
-            return User(user_data['id'], user_data['username'], user_data['password'])
-    except Exception as e:
-        print(f"Erro ao carregar usuário: {e}")
-        return None
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-    return None
-
-# Definição da sua classe User, se ainda não tiver feito
-# Ela deve herdar de UserMixin
-class User(UserMixin):
-    def __init__(self, id, username, password):
-        self.id = id
-        self.username = username
-        self.password = password
-
-    def get_id(self):
-        # O Flask-Login usa este método para obter o ID do usuário
-        return str(self.id)
 
 # --- Funções para Gerenciar a Conexão com o Banco de Dados ---
 def get_db():
@@ -253,10 +207,6 @@ def ensure_supervisores_table_and_initial_entry(): # Indentação corrigida aqui
 
 # --- FIM DO NOVO CÓDIGO PARA SUPERVISORES ---
 
-# ... suas importações e inicialização do app, Flask-Login, UserMixin, load_user ...
-
-# ... suas outras rotas ...
-
 # 🔵 Página principal (ROTA INDEX EXISTENTE, AGORA MODIFICADA PARA INCLUIR SUPERVISORES)
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -445,98 +395,49 @@ def cadastro_viaturas():
         contagem_viaturas_por_unidade=contagem_viaturas_por_unidade
     )
 
-# Rota para exportar relatório Excel de ocorrências ATUAIS
 @app.route('/exportar_relatorio_excel')
 def exportar_relatorio_excel():
     conn = None
     cursor = None
     try:
-        conn = get_db()
-        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+        conn = get_db() # Substituído get_db_connection() por get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)  # Retorna dicionários para fácil conversão em DataFrame
 
+        # Exemplo: Buscar todas as ocorrências. Ajuste esta query se o seu relatório for diferente.
         cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY data_registro DESC")
         ocorrencias = cursor.fetchall()
 
         if not ocorrencias:
             flash('Não há dados para exportar para Excel.', 'info')
-            return redirect(url_for('relatorios'))
+            return redirect(url_for('relatorios'))  # Redirecione para a sua página de relatório (mude o nome se for diferente)
 
+        # Converter a lista de dicionários em um DataFrame do pandas
         df = pd.DataFrame(ocorrencias)
 
+        # Definir o caminho para salvar o arquivo temporariamente
         output = BytesIO()
         writer = pd.ExcelWriter(output, engine='openpyxl')
         df.to_excel(writer, index=False, sheet_name='Ocorrencias')
         writer.close()
         output.seek(0)
 
+        # Enviar o arquivo para download
         return send_file(output,
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                          as_attachment=True,
                          download_name='relatorio_ocorrencias_cepol.xlsx')
 
-    except MySQLdb.Error as err:
+    except MySQLdb.Error as err: # Exceção corrigida
         flash(f"Erro no banco de dados ao exportar: {err}", 'danger')
     except Exception as e:
         flash(f"Ocorreu um erro inesperado ao exportar: {e}", 'danger')
     finally:
         if cursor:
-            
-    return redirect(url_for('relatorios'))
-
-# Rota para exportar o HISTÓRICO de ocorrências para Excel
-@app.route('/exportar_historico_ocorrencias_excel')
-def exportar_historico_ocorrencias_excel():
-    conn = None
-    cursor = None
-    try:
-        conn = get_db()
-        cursor = conn.cursor(MySQLdb.cursors.DictCursor) # Para obter resultados como dicionários
-
-        # Seleciona TODAS as ocorrências da tabela de histórico
-        # CORREÇÃO CRÍTICA AQUI: Usar 'ocorrencias_historico'
-        # E incluir TODAS as colunas que são arquivadas
-        cursor.execute("""
-            SELECT id, data, hora, tipo, descricao, viatura, protocolo, ro_cadg,
-                   chegada_delegacia, entrega_ro, saida_delegacia, tempo_total_dp,
-                   tempo_entrega_dp, data_arquivamento
-            FROM ocorrencias_historico
-            ORDER BY data_arquivamento DESC, data DESC, hora DESC
-        """)
-        registros = cursor.fetchall()
-
-        if not registros:
-            flash('Não há ocorrências no histórico para exportar.', 'warning')
-            return redirect(url_for('gerenciar_ocorrencias'))
-
-        df = pd.DataFrame(registros)
-
-        # Reordenar colunas para melhor visualização (opcional, mas recomendado para consistência)
-        # Inclui TODAS as colunas selecionadas acima
-        colunas_ordenadas = [
-            'id', 'data_arquivamento', 'data', 'hora', 'tipo', 'descricao', 'viatura',
-            'protocolo', 'ro_cadg', 'chegada_delegacia', 'entrega_ro', 'saida_delegacia',
-            'tempo_total_dp', 'tempo_entrega_dp'
-        ]
-        df = df[colunas_ordenadas]
-
-        output = BytesIO()
-        # Use openpyxl se xlsxwriter não estiver instalado ou causar problemas
-        writer = pd.ExcelWriter(output, engine='xlsxwriter') # Ou 'openpyxl'
-        df.to_excel(writer, index=False, sheet_name='Historico Ocorrencias CEPOL')
-        writer.close()
-
-        output.seek(0)
-        return send_file(output, as_attachment=True, download_name='historico_ocorrencias_cepol.xlsx',
-                                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-    except MySQLdb.Error as e:
-        flash(f"Erro ao exportar histórico de ocorrências: {e}", 'danger')
-        print(f"Erro ao exportar histórico: {e}")
-        return redirect(url_for('gerenciar_ocorrencias'))
-    finally:
-        if cursor:
             cursor.close()
-        
+        # conn.close() removido
+
+    # Em caso de erro, redirecione para a página de relatório
+    return redirect(url_for('relatorios')) # Mude para a rota da sua página de relatório (se for diferente)
 
 @app.route('/editar_contato/<int:contato_id>', methods=['GET'])
 def editar_contato(contato_id):
@@ -907,47 +808,6 @@ def editar_ocorrencia(id):
     return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
 
     # 💣 NOVA Rota para LIMPAR TODAS AS OCORRÊNCIAS
-# ... (Seus imports e outras rotas) ...
-# ... (Seus imports e outras rotas) ...
-
-# Rota de Login
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-
-        # Lógica de autenticação (EXEMPLO - ajuste para sua lógica real)
-        conn = None
-        cursor = None
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT id, username, password FROM usuarios WHERE username = %s", (username,))
-            user_data = cursor.fetchone()
-
-            if user_data and user_data['password'] == password: # SEMPRE USE HASH DE SENHAS EM PRODUÇÃO!
-                user = User(user_data['id'], user_data['username'], user_data['password'])
-                login_user(user)
-                flash('Login bem-sucedido!', 'success')
-                # Redireciona para a página anterior ou para /ocorrencias após o login
-                next_page = request.args.get('next')
-                return redirect(next_page or url_for('ocorrencias')) # Ajuste 'ocorrencias' para sua página principal
-            else:
-                flash('Usuário ou senha incorretos.', 'danger')
-        except Exception as e:
-            print(f"Erro no login: {e}")
-            flash('Ocorreu um erro no login. Tente novamente.', 'danger')
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
-
-    # Renderiza o template de login para requisições GET ou falha de POST
-    return render_template('login.html')
-
-# 💣 NOVA Rota para LIMPAR TODAS AS OCORRÊNCIAS
 @app.route('/limpar_todas_ocorrencias', methods=['POST'])
 def limpar_todas_ocorrencias():
     conn = None
@@ -955,62 +815,18 @@ def limpar_todas_ocorrencias():
     try:
         conn = get_db()
         cursor = conn.cursor()
-
-        # 1. Seleciona TODAS as ocorrências da tabela principal antes de deletar
-        # Certifique-se de que 'id' existe em ocorrencias_cepol se você quiser arquivá-lo
-        cursor.execute("SELECT id, data, hora, tipo, descricao, viatura, protocolo, ro_cadg, chegada_delegacia, entrega_ro, saida_delegacia, tempo_total_dp, tempo_entrega_dp FROM ocorrencias_cepol")
-        ocorrencias_para_arquivar = cursor.fetchall()
-
-        if ocorrencias_para_arquivar: # Verifica se há dados para arquivar
-            # 2. Insere as ocorrências na tabela de histórico
-            # ASSUMIMOS QUE 'ocorrencias_historico' É O NOME CORRETO DA SUA TABELA DE HISTÓRICO NO DB
-            # E QUE ELA TEM COLUNAS PARA ID E data_arquivamento (como AUTO_INCREMENT ou DEFAULT NOW())
-            insert_query = """
-            INSERT INTO ocorrencias_historico (id, data, hora, tipo, descricao, viatura, protocolo, ro_cadg, chegada_delegacia, entrega_ro, saida_delegacia, tempo_total_dp, tempo_entrega_dp, data_arquivamento)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-            """
-            # Prepara os dados para inserção (assumindo que suas colunas são data, hora, etc. na ordem)
-            # o é um dicionário, então precisamos pegar os valores na ordem certa.
-            data_to_insert = []
-            for o in ocorrencias_para_arquivar:
-                data_to_insert.append((
-                    o.get('id'), # Use .get para evitar KeyError se 'id' não existir
-                    o.get('data'),
-                    o.get('hora'),
-                    o.get('tipo'),
-                    o.get('descricao'),
-                    o.get('viatura'),
-                    o.get('protocolo'),
-                    o.get('ro_cadg'),
-                    o.get('chegada_delegacia'),
-                    o.get('entrega_ro'),
-                    o.get('saida_delegacia'),
-                    o.get('tempo_total_dp'),
-                    o.get('tempo_entrega_dp')
-                    # data_arquivamento é inserida via NOW() no SQL
-                ))
-            cursor.executemany(insert_query, data_to_insert)
-
-            # 3. EXECUTAR O COMANDO DELETE para todas as ocorrências da tabela principal
-            cursor.execute("DELETE FROM ocorrencias_cepol")
-            conn.commit()
-            flash('Todas as ocorrências foram limpas e arquivadas com sucesso!', 'success')
-        else:
-            flash('Não há ocorrências atuais para limpar e arquivar.', 'info')
-
+        # EXECUTAR O COMANDO DELETE PARA TODAS AS OCORRÊNCIAS
+        cursor.execute("DELETE FROM ocorrencias_cepol")
+        conn.commit()
+        flash('Todas as ocorrências foram apagadas com sucesso!', 'success')
     except MySQLdb.Error as err:
-        conn.rollback() # Em caso de erro, desfaz as operações
-        print(f'Erro no banco de dados ao apagar/arquivar todas as ocorrências: {err}')
-        flash(f'Erro no banco de dados ao apagar/arquivar todas as ocorrências: {err}', 'danger')
+        flash(f'Erro no banco de dados ao apagar todas as ocorrências: {err}', 'danger')
     except Exception as e:
-        conn.rollback() # Em caso de erro, desfaz as operações
-        print(f'Ocorreu um erro inesperado ao apagar/arquivar tudo: {e}')
-        flash(f'Ocorreu um erro inesperado ao apagar/arquivar tudo: {e}', 'danger')
+        flash(f'Ocorreu um erro inesperado ao apagar tudo: {e}', 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn: # Certifique-se de que a conexão é fechada se for aberta aqui
-            conn.close() # É bom fechar se o get_db() abre uma nova conexão
+            # conn.close() é gerenciado por @app.teardown_appcontext
 
     return redirect(url_for('gerenciar_ocorrencias'))
 
