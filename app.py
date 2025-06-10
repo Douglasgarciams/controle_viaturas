@@ -445,52 +445,48 @@ def cadastro_viaturas():
         contagem_viaturas_por_unidade=contagem_viaturas_por_unidade
     )
 
+# Rota para exportar relatório Excel de ocorrências ATUAIS
 @app.route('/exportar_relatorio_excel')
 def exportar_relatorio_excel():
     conn = None
     cursor = None
     try:
-        conn = get_db() # Substituído get_db_connection() por get_db()
-        cursor = conn.cursor(MySQLdb.cursors.DictCursor)  # Retorna dicionários para fácil conversão em DataFrame
+        conn = get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
-        # Exemplo: Buscar todas as ocorrências. Ajuste esta query se o seu relatório for diferente.
         cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY data_registro DESC")
         ocorrencias = cursor.fetchall()
 
         if not ocorrencias:
             flash('Não há dados para exportar para Excel.', 'info')
-            return redirect(url_for('relatorios'))  # Redirecione para a sua página de relatório (mude o nome se for diferente)
+            return redirect(url_for('relatorios'))
 
-        # Converter a lista de dicionários em um DataFrame do pandas
         df = pd.DataFrame(ocorrencias)
 
-        # Definir o caminho para salvar o arquivo temporariamente
         output = BytesIO()
         writer = pd.ExcelWriter(output, engine='openpyxl')
         df.to_excel(writer, index=False, sheet_name='Ocorrencias')
         writer.close()
         output.seek(0)
 
-        # Enviar o arquivo para download
         return send_file(output,
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                          as_attachment=True,
                          download_name='relatorio_ocorrencias_cepol.xlsx')
 
-    except MySQLdb.Error as err: # Exceção corrigida
+    except MySQLdb.Error as err:
         flash(f"Erro no banco de dados ao exportar: {err}", 'danger')
     except Exception as e:
         flash(f"Ocorreu um erro inesperado ao exportar: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        # conn.close() removido
+        if conn:
+            conn.close()
 
-    # Em caso de erro, redirecione para a página de relatório
-    return redirect(url_for('relatorios')) # Mude para a rota da sua página de relatório (se for diferente)
+    return redirect(url_for('relatorios'))
 
-# ... (Seus imports e outras rotas, antes de 'if __name__ == "__main__":') ...
-
+# Rota para exportar o HISTÓRICO de ocorrências para Excel
 @app.route('/exportar_historico_ocorrencias_excel')
 def exportar_historico_ocorrencias_excel():
     conn = None
@@ -500,7 +496,15 @@ def exportar_historico_ocorrencias_excel():
         cursor = conn.cursor(MySQLdb.cursors.DictCursor) # Para obter resultados como dicionários
 
         # Seleciona TODAS as ocorrências da tabela de histórico
-        cursor.execute("SELECT id, data, hora, tipo, descricao, viatura, data_arquivamento FROM ocorrencias_arquivadas ORDER BY data_arquivamento DESC, data DESC, hora DESC")
+        # CORREÇÃO CRÍTICA AQUI: Usar 'ocorrencias_historico'
+        # E incluir TODAS as colunas que são arquivadas
+        cursor.execute("""
+            SELECT id, data, hora, tipo, descricao, viatura, protocolo, ro_cadg,
+                   chegada_delegacia, entrega_ro, saida_delegacia, tempo_total_dp,
+                   tempo_entrega_dp, data_arquivamento
+            FROM ocorrencias_historico
+            ORDER BY data_arquivamento DESC, data DESC, hora DESC
+        """)
         registros = cursor.fetchall()
 
         if not registros:
@@ -509,30 +513,36 @@ def exportar_historico_ocorrencias_excel():
 
         df = pd.DataFrame(registros)
 
-        # Reordenar colunas para melhor visualização (opcional)
-        colunas_ordenadas = ['id', 'data_arquivamento', 'data', 'hora', 'tipo', 'descricao', 'viatura']
+        # Reordenar colunas para melhor visualização (opcional, mas recomendado para consistência)
+        # Inclui TODAS as colunas selecionadas acima
+        colunas_ordenadas = [
+            'id', 'data_arquivamento', 'data', 'hora', 'tipo', 'descricao', 'viatura',
+            'protocolo', 'ro_cadg', 'chegada_delegacia', 'entrega_ro', 'saida_delegacia',
+            'tempo_total_dp', 'tempo_entrega_dp'
+        ]
         df = df[colunas_ordenadas]
 
         output = BytesIO()
-        writer = pd.ExcelWriter(output, engine='xlsxwriter')
+        # Use openpyxl se xlsxwriter não estiver instalado ou causar problemas
+        writer = pd.ExcelWriter(output, engine='xlsxwriter') # Ou 'openpyxl'
         df.to_excel(writer, index=False, sheet_name='Historico Ocorrencias CEPOL')
-        writer.close() # Use .close() em vez de .save() para pandas >= 1.0 ou xlsxwriter
+        writer.close()
 
-        output.seek(0) # Retorna o "ponteiro" do BytesIO para o início
+        output.seek(0)
         return send_file(output, as_attachment=True, download_name='historico_ocorrencias_cepol.xlsx',
-                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     except MySQLdb.Error as e:
         flash(f"Erro ao exportar histórico de ocorrências: {e}", 'danger')
-        print(f"Erro ao exportar histórico: {e}") # Para debug no terminal
+        print(f"Erro ao exportar histórico: {e}")
         return redirect(url_for('gerenciar_ocorrencias'))
     finally:
         if cursor:
             cursor.close()
         if conn:
             conn.close()
-            if 'db' in g:
-                del g.db
+            # if 'db' in g: # Esta linha pode não ser necessária dependendo de como get_db() funciona
+            #     del g.db
 
 @app.route('/editar_contato/<int:contato_id>', methods=['GET'])
 def editar_contato(contato_id):
@@ -953,19 +963,38 @@ def limpar_todas_ocorrencias():
         cursor = conn.cursor()
 
         # 1. Seleciona TODAS as ocorrências da tabela principal antes de deletar
-        cursor.execute("SELECT data, hora, tipo, descricao, viatura, protocolo, ro_cadg, chegada_delegacia, entrega_ro, saida_delegacia, tempo_total_dp, tempo_entrega_dp FROM ocorrencias_cepol")
+        # Certifique-se de que 'id' existe em ocorrencias_cepol se você quiser arquivá-lo
+        cursor.execute("SELECT id, data, hora, tipo, descricao, viatura, protocolo, ro_cadg, chegada_delegacia, entrega_ro, saida_delegacia, tempo_total_dp, tempo_entrega_dp FROM ocorrencias_cepol")
         ocorrencias_para_arquivar = cursor.fetchall()
 
         if ocorrencias_para_arquivar: # Verifica se há dados para arquivar
             # 2. Insere as ocorrências na tabela de histórico
-            # CERTIFIQUE-SE DE QUE 'ocorrencias_historico' É O NOME CORRETO DA SUA TABELA DE HISTÓRICO NO DB
-            # E QUE AS COLUNAS CORRESPONDEM ÀS COLUNAS DO SELECT ACIMA E DA SUA TABELA DE HISTÓRICO
+            # ASSUMIMOS QUE 'ocorrencias_historico' É O NOME CORRETO DA SUA TABELA DE HISTÓRICO NO DB
+            # E QUE ELA TEM COLUNAS PARA ID E data_arquivamento (como AUTO_INCREMENT ou DEFAULT NOW())
             insert_query = """
-            INSERT INTO ocorrencias_historico (data, hora, tipo, descricao, viatura, protocolo, ro_cadg, chegada_delegacia, entrega_ro, saida_delegacia, tempo_total_dp, tempo_entrega_dp)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO ocorrencias_historico (id, data, hora, tipo, descricao, viatura, protocolo, ro_cadg, chegada_delegacia, entrega_ro, saida_delegacia, tempo_total_dp, tempo_entrega_dp, data_arquivamento)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """
             # Prepara os dados para inserção (assumindo que suas colunas são data, hora, etc. na ordem)
-            data_to_insert = [tuple(o.values()) for o in ocorrencias_para_arquivar]
+            # o é um dicionário, então precisamos pegar os valores na ordem certa.
+            data_to_insert = []
+            for o in ocorrencias_para_arquivar:
+                data_to_insert.append((
+                    o.get('id'), # Use .get para evitar KeyError se 'id' não existir
+                    o.get('data'),
+                    o.get('hora'),
+                    o.get('tipo'),
+                    o.get('descricao'),
+                    o.get('viatura'),
+                    o.get('protocolo'),
+                    o.get('ro_cadg'),
+                    o.get('chegada_delegacia'),
+                    o.get('entrega_ro'),
+                    o.get('saida_delegacia'),
+                    o.get('tempo_total_dp'),
+                    o.get('tempo_entrega_dp')
+                    # data_arquivamento é inserida via NOW() no SQL
+                ))
             cursor.executemany(insert_query, data_to_insert)
 
             # 3. EXECUTAR O COMANDO DELETE para todas as ocorrências da tabela principal
