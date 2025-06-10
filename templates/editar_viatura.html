@@ -19,8 +19,8 @@
                             <option value="">Selecione</option>
                             {% for unidade in unidades %}
                                 <option value="{{ unidade.id }}" {% if unidade.id == viatura.unidade_id %}selected{% endif %}>
-                                    {{ unidade.nome }}
-                                </option>
+                                    {{ unidade.nome_unidade }}
+                            </option>
                             {% endfor %}
                         </select>
                     </div>

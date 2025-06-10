@@ -619,7 +619,7 @@ def editar_viatura(viatura_id):
         """, (viatura_id,))
         viatura = cursor.fetchone()
 
-        cursor.execute("SELECT id, nome FROM unidades")
+        cursor.execute("SELECT id, nome_unidade FROM unidades ORDER BY nome_unidade")
         unidades = cursor.fetchall()
 
     except MySQLdb.Error as err: # Exceção corrigida
