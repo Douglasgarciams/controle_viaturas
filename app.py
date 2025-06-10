@@ -1075,8 +1075,7 @@ def relatorios():
         cursor.execute("""
                        SELECT SUM(CASE
                                       WHEN status IN
-                                           ('ADM', 'CFP', 'FORÇA TATICA', 'RP', 'TRANSITO', 'ADJ CFP', 'INTERIOR',
-                                            'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO',
+                                           ('ADM', 'CFP', 'FORÇA TATICA', 'RP', 'TRANSITO', 'ADJ CFP', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO',
                                             'JUIZADO', 'TRANSITO/BLITZ') THEN 1
                                       ELSE 0 END)                                                           AS total_viaturas_geral,
                               SUM(CASE WHEN status = 'INTERIOR' THEN 1 ELSE 0 END)                          AS total_interior,
