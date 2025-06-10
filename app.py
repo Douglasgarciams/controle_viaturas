@@ -1090,6 +1090,46 @@ def relatorios():
                            viaturas_por_status=viaturas_por_status,
                            totais_viaturas=totais_viaturas)
 
+                           @app.route('/debug-status')
+def debug_status():
+    conn = None
+    cursor = None
+    output_html = "<h1>Diagnóstico de Status de Viaturas</h1>"
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+        
+        cursor.execute("SELECT DISTINCT status FROM viaturas")
+        unique_statuses = cursor.fetchall()
+        
+        if not unique_statuses:
+            return "Nenhum status encontrado na tabela de viaturas."
+
+        output_html += "<table border='1' cellpadding='5'><tr><th>Status do Banco</th><th>É 'INTERIOR'?</th><th>É 'MOTO'?</th></tr>"
+
+        for row in unique_statuses:
+            status_original = row['status']
+            
+            # Aplica a mesma limpeza que usamos no código de relatórios
+            status_limpo = status_original.strip() if status_original else ''
+            
+            # Realiza as comparações exatas
+            is_interior = (status_limpo == 'INTERIOR')
+            is_moto = (status_limpo == 'MOTO')
+            
+            # Monta a linha da tabela de diagnóstico
+            output_html += f"<tr><td>'{status_limpo}'</td><td>{is_interior}</td><td>{is_moto}</td></tr>"
+
+        output_html += "</table>"
+        return output_html
+
+    except Exception as e:
+        return f"Ocorreu um erro durante o diagnóstico: {e}"
+    finally:
+        if cursor:
+            cursor.close()
+
 
 # ... (restante do seu app.py, incluindo app.run(debug=True)
 
