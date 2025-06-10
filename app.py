@@ -1090,7 +1090,7 @@ def relatorios():
                            viaturas_por_status=viaturas_por_status,
                            totais_viaturas=totais_viaturas)
 
-                           @app.route('/debug-status')
+@app.route('/debug-status')
 def debug_status():
     conn = None
     cursor = None
