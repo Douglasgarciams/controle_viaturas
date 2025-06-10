@@ -14,13 +14,28 @@
     {% endif %}
 {% endwith %}
 
-<div class="d-flex justify-content-between mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3">
+    
+    {# Botão para voltar para a tela principal #}
     <a href="{{ url_for('gerenciar_ocorrencias') }}" class="btn btn-secondary">
         &larr; Voltar para a Tela Principal
     </a>
-    <a href="{{ url_for('exportar_historico_excel') }}" class="btn btn-success">
-        <i class="fas fa-file-excel"></i> Exportar TODO o Histórico para Excel
-    </a>
+    
+    {# Grupo de botões para as ações de exportar e zerar #}
+    <div>
+        {# PASSO 1: O botão que você já tem para exportar #}
+        <a href="{{ url_for('exportar_historico_excel') }}" class="btn btn-success">
+            <i class="fas fa-file-excel"></i> Passo 1: Exportar Histórico
+        </a>
+        
+        {# PASSO 2: O novo botão para zerar o histórico #}
+        <form action="{{ url_for('zerar_historico_confirmado') }}" method="POST" class="d-inline" onsubmit="return confirm('ATENÇÃO!\n\nVocê confirma que já EXPORTOU O ARQUIVO EXCEL do histórico?\n\nEsta ação apagará PERMANENTEMENTE todos os registros desta tela.');">
+            <button type="submit" class="btn btn-danger">
+                <i class="fas fa-trash-alt"></i> Passo 2: Zerar Histórico
+            </button>
+        </form>
+    </div>
+
 </div>
 
 <div class="table-responsive shadow-sm rounded">

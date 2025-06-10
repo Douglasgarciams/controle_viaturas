@@ -956,6 +956,31 @@ def exportar_historico_excel():
         if cursor:
             cursor.close()
 
+            # 🔥 Rota para ZERAR PERMANENTEMENTE o histórico (usar após o backup)
+@app.route('/zerar_historico_confirmado', methods=['POST'])
+def zerar_historico_confirmado():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Apaga TODOS os registros da tabela de histórico
+        cursor.execute("DELETE FROM historico_ocorrencias")
+        
+        conn.commit()
+        flash('O histórico de ocorrências foi zerado com sucesso!', 'warning')
+
+    except MySQLdb.Error as err:
+        if conn:
+            conn.rollback() 
+        flash(f'Erro no banco de dados ao zerar o histórico: {err}', 'danger')
+    finally:
+        if cursor:
+            cursor.close()
+
+    return redirect(url_for('historico'))
+
 # --- Rota para Relatórios ---
 @app.route('/relatorios')
 def relatorios():
