@@ -1043,7 +1043,14 @@ def relatorios():
 
             total_interior = (df['status'] == 'INTERIOR').sum()
             total_motos = (df['status'] == 'MOTO').sum()
-            total_capital = (~df['status'].isin(['INTERIOR', 'MOTO'])).sum()
+            # Define a lista explícita de status que devem ser somados em 'Capital'
+            status_capital = [
+                'ADM', 'CFP', 'FORÇATÁTICA', 'RP', 'TRÂNSITO', 'ADJ CFP', 
+                'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITÁRIO', 
+                'TRANSITO/BLITZ'
+            ]
+# Soma apenas as viaturas cujo status está na lista acima
+            total_capital = df['status'].isin(status_capital).sum()
             soma_atendimento_copom = df['status'].isin(['FORÇATÁTICA', 'RP', 'TRÂNSITO']).sum()
             total_viaturas_geral = len(df)
 
