@@ -900,6 +900,27 @@ def backup_ocorrencias_excel():
         if cursor:
             cursor.close()
 
+            # 🏛️ Rota para VISUALIZAR o histórico de ocorrências arquivadas
+@app.route('/historico')
+def historico():
+    conn = None
+    cursor = None
+    historico_ocorrencias = []
+    try:
+        conn = get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+        # Busca os dados da tabela de histórico, não da tabela principal
+        cursor.execute("SELECT * FROM historico_ocorrencias ORDER BY id DESC")
+        historico_ocorrencias = cursor.fetchall()
+    except MySQLdb.Error as err:
+        flash(f"Erro ao carregar o histórico: {err}", 'danger')
+    finally:
+        if cursor:
+            cursor.close()
+            
+    # Renderiza um NOVO template chamado historico.html
+    return render_template('historico.html', ocorrencias=historico_ocorrencias)
+
 # --- Rota para Relatórios ---
 @app.route('/relatorios')
 def relatorios():

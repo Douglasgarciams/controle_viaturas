@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% block title %}Histórico de Ocorrências{% endblock %}
+
+{% block content %}
+<h2 class="mb-4 text-center">Histórico de Ocorrências</h2>
+<p class="text-center text-muted">Aqui estão todas as ocorrências que já foram limpas da tela principal.</p>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<div class="d-flex justify-content-between mb-3">
+    <a href="{{ url_for('gerenciar_ocorrencias') }}" class="btn btn-secondary">
+        &larr; Voltar para a Tela Principal
+    </a>
+    <a href="{{ url_for('exportar_historico_excel') }}" class="btn btn-success">
+        <i class="fas fa-file-excel"></i> Exportar TODO o Histórico para Excel
+    </a>
+</div>
+
+<div class="table-responsive shadow-sm rounded">
+    <table class="table table-striped table-hover">
+        <thead class="bg-secondary text-white">
+            <tr>
+                <th>ID</th>
+                <th>Fato</th>
+                <th>Status</th>
+                <th>Protocolo</th>
+                <th>R.O CADG</th>
+                <th>Chegada</th>
+                <th>Entrega R.O</th>
+                <th>Saída</th>
+                <th>Total DP</th>
+                <th>Entrega DP</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ocorrencia in ocorrencias %}
+            <tr>
+                <td>{{ ocorrencia.id }}</td>
+                <td>{{ ocorrencia.fato }}</td>
+                <td>{{ ocorrencia.status }}</td>
+                <td>{{ ocorrencia.protocolo }}</td>
+                <td>{{ ocorrencia.ro_cadg }}</td>
+                <td>{{ ocorrencia.chegada_delegacia }}</td>
+                <td>{{ ocorrencia.entrega_ro }}</td>
+                <td>{{ ocorrencia.saida_delegacia }}</td>
+                <td>{{ ocorrencia.tempo_total_dp }}</td>
+                <td>{{ ocorrencia.tempo_entrega_dp }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="10" class="text-center text-muted">Nenhuma ocorrência no histórico ainda.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
