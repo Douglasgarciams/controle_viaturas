@@ -306,90 +306,82 @@ def index():
     return render_template('index.html', unidades=unidades, status_options=STATUS_OPTIONS,
                            viaturas=viaturas, contatos=contatos, supervisores=supervisores_data) # Alterado de 'cfps' para 'contatos'
 
-# 🚗 Cadastro de viaturas
 @app.route('/cadastro_viaturas', methods=['GET', 'POST'])
 def cadastro_viaturas():
     conn = None
     cursor = None
     unidades = []
     viaturas = []
-    contatos = []
+    contatos = [] # Adicionado para evitar erro se não for definido
     contagem_viaturas_por_unidade = {}
     unidade_filtro = request.args.get('unidade_id')
 
     try:
-        conn = get_db() # Substituído get_db_connection() por get_db()
+        conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
-        # Dentro da função def cadastro_viaturas():
-    if request.method == 'POST':
-        # Pega os dados do formulário
-        unidade_id = request.form['unidade_id']
-        prefixo = request.form['prefixo'].strip() # Usamos .strip() para remover espaços extras
-        status = request.form['status']
-        hora_entrada = request.form.get('hora_entrada')
-        hora_saida = request.form.get('hora_saida')
+        if request.method == 'POST':
+            # Pega os dados do formulário
+            unidade_id_form = request.form['unidade_id']
+            prefixo = request.form['prefixo'].strip() # Usamos .strip() para remover espaços extras
+            status = request.form['status']
+            hora_entrada = request.form.get('hora_entrada')
+            hora_saida = request.form.get('hora_saida')
 
-        # Passo 1: Verificar se o prefixo JÁ EXISTE em qualquer unidade
-        cursor.execute("SELECT id FROM viaturas WHERE prefixo = %s", (prefixo,))
-        viatura_existente = cursor.fetchone()
+            # Passo 1: Verificar se o prefixo JÁ EXISTE em qualquer unidade
+            cursor.execute("SELECT id FROM viaturas WHERE prefixo = %s", (prefixo,))
+            viatura_existente = cursor.fetchone()
 
-        # Passo 2: Se a viatura já existe, mostrar erro e parar
-        if viatura_existente:
-            flash(f'O prefixo "{prefixo}" já está cadastrado no sistema. Por favor, verifique.', 'danger')
-            # Redireciona de volta para a página de cadastro, mantendo o filtro de unidade se houver
-            return redirect(url_for('cadastro_viaturas', unidade_id=request.form.get('unidade_filtro', '')))
+            # Passo 2: Se a viatura já existe, mostrar erro e parar
+            if viatura_existente:
+                flash(f'O prefixo "{prefixo}" já está cadastrado no sistema. Por favor, verifique.', 'danger')
+                return redirect(url_for('cadastro_viaturas', unidade_id=unidade_filtro))
 
-        # Passo 3: Se não existe, prosseguir com a inserção
-        else:
-            cursor.execute("""
-                INSERT INTO viaturas (unidade_id, prefixo, status, hora_entrada, hora_saida)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (unidade_id, prefixo, status, hora_entrada, hora_saida))
-            conn.commit()
-            flash('Viatura cadastrada com sucesso!', 'success')
-            # Redireciona para a página de cadastro, filtrando pela unidade que acabou de ser cadastrada
-            return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
+            # Passo 3: Se não existe, prosseguir com a inserção
+            else:
+                cursor.execute("""
+                    INSERT INTO viaturas (unidade_id, prefixo, status, hora_entrada, hora_saida)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (unidade_id_form, prefixo, status, hora_entrada, hora_saida))
+                conn.commit()
+                flash('Viatura cadastrada com sucesso!', 'success')
+                # Redireciona para a página de cadastro, filtrando pela unidade que acabou de ser cadastrada
+                return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id_form))
 
-        cursor.execute("SELECT id, nome_unidade AS nome FROM unidades")
+        # --- Lógica de GET (para carregar a página) ---
+        cursor.execute("SELECT id, nome_unidade AS nome FROM unidades") # Corrigido para nome_unidade se aplicável
         unidades = cursor.fetchall()
 
         if unidade_filtro:
             cursor.execute("""
                 SELECT v.id, u.nome_unidade AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
-                FROM viaturas v
-                JOIN unidades u ON v.unidade_id = u.id
-                WHERE v.unidade_id = %s
+                FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
+                WHERE v.unidade_id = %s ORDER BY v.prefixo ASC
             """, (unidade_filtro,))
         else:
             cursor.execute("""
                 SELECT v.id, u.nome_unidade AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
-                FROM viaturas v
-                JOIN unidades u ON v.unidade_id = u.id
+                FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
                 ORDER BY u.nome_unidade ASC, v.prefixo ASC
             """)
         viaturas = cursor.fetchall()
 
         cursor.execute("""
-            SELECT unidade_id, COUNT(*) as quantidade
-            FROM viaturas
-            GROUP BY unidade_id
+            SELECT unidade_id, COUNT(*) as quantidade FROM viaturas GROUP BY unidade_id
         """)
         contagem_viaturas_por_unidade = {row['unidade_id']: row['quantidade'] for row in cursor.fetchall()}
 
         cursor.execute("""
             SELECT c.id, u.nome_unidade AS unidade_nome, c.cfp, c.telefone
-            FROM contatos c
-            JOIN unidades u ON c.unidade_id = u.id
+            FROM contatos c JOIN unidades u ON c.unidade_id = u.id
         """)
         contatos = cursor.fetchall()
 
-    except MySQLdb.Error as err: # Exceção corrigida
-        flash(f"Database error loading vehicles: {err}", 'danger')
+    except MySQLdb.Error as err:
+        flash(f"Database error loading page: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        # conn.close() removido
 
     return render_template(
         'cadastro_viaturas.html',
