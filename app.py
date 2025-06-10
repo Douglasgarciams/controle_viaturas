@@ -492,7 +492,6 @@ def exportar_relatorio_excel():
 # ... (Seus imports e outras rotas, antes de 'if __name__ == "__main__":') ...
 
 @app.route('/exportar_historico_ocorrencias_excel')
-@login_required
 def exportar_historico_ocorrencias_excel():
     conn = None
     cursor = None
