@@ -480,10 +480,7 @@ def exportar_relatorio_excel():
         flash(f"Ocorreu um erro inesperado ao exportar: {e}", 'danger')
     finally:
         if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-
+            
     return redirect(url_for('relatorios'))
 
 # Rota para exportar o HISTÓRICO de ocorrências para Excel
@@ -539,10 +536,7 @@ def exportar_historico_ocorrencias_excel():
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
-            # if 'db' in g: # Esta linha pode não ser necessária dependendo de como get_db() funciona
-            #     del g.db
+        
 
 @app.route('/editar_contato/<int:contato_id>', methods=['GET'])
 def editar_contato(contato_id):
