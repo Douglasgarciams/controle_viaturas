@@ -1049,17 +1049,26 @@ def relatorios():
         cursor.execute("SELECT status, COUNT(id) AS quantidade FROM viaturas GROUP BY status ORDER BY status")
         viaturas_por_status = cursor.fetchall()
 
-        # 6. Tabela Específica para Funções de Viaturas (com a consulta corrigida)
-        cursor.execute("""
-            SELECT 
-                COUNT(*) AS total_viaturas_geral,
-                SUM(CASE WHEN status NOT IN ('INTERIOR', 'MOTO') THEN 1 ELSE 0 END) AS total_capital,
-                SUM(CASE WHEN status = 'INTERIOR' THEN 1 ELSE 0 END) AS total_interior,
-                SUM(CASE WHEN status = 'MOTO' THEN 1 ELSE 0 END) AS total_motos,
-                SUM(CASE WHEN status IN ('FORÇA TATICA', 'RP', 'TRANSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
-            FROM viaturas;
-        """)
-        totais_viaturas_row = cursor.fetchone()
+        # 6. Tabela Específica para Funções de Viaturas (com TRIM para garantir a precisão)
+cursor.execute("""
+    SELECT 
+        COUNT(*) AS total_viaturas_geral,
+        
+        -- Soma de Capital: CONTA TUDO, EXCETO 'INTERIOR' e 'MOTO'
+        SUM(CASE WHEN TRIM(status) NOT IN ('INTERIOR', 'MOTO') THEN 1 ELSE 0 END) AS total_capital,
+        
+        -- Soma de Interior: CONTA APENAS 'INTERIOR'
+        SUM(CASE WHEN TRIM(status) = 'INTERIOR' THEN 1 ELSE 0 END) AS total_interior,
+        
+        -- Soma de Motos: CONTA APENAS 'MOTO'
+        SUM(CASE WHEN TRIM(status) = 'MOTO' THEN 1 ELSE 0 END) AS total_motos,
+        
+        -- Soma de Atendimento COPOM: CONTA 'FORÇA TATICA', 'RP', 'TRANSITO'
+        -- ATENÇÃO: Verifique se a grafia abaixo corresponde EXATAMENTE à do seu banco
+        SUM(CASE WHEN TRIM(status) IN ('FORÇATÁTICA', 'RP', 'TRÂNSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
+    FROM viaturas;
+""")
+totais_viaturas_row = cursor.fetchone()
 
         # Processa os resultados da consulta de totais
         if totais_viaturas_row:
