@@ -709,23 +709,22 @@ def gerenciar_ocorrencias():
 # 🗑️ Rota para excluir ocorrência
 @app.route('/excluir_ocorrencia/<int:id>', methods=['POST'])
 def excluir_ocorrencia(id):
-    conn = None
-    cursor = None
-    try:
-        conn = get_db() # Substituído get_db_connection() por get_db()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM ocorrencias_cepol WHERE id = %s", (id,))
-        conn.commit()
-        flash('Ocorrência excluída com sucesso!', 'success')
-    except MySQLdb.Error as err: # Exceção corrigida
-        flash(f'Erro ao excluir ocorrência: {err}', 'danger')
-    except Exception as e:
-        flash(f'Ocorreu um erro inesperado ao excluir: {e}', 'danger')
-    finally:
-        if cursor:
-            cursor.close()
-        # conn.close() removido
-
+    conn = None
+    cursor = None
+    try:
+        conn = get_db() 
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM ocorrencias_cepol WHERE id = %s", (id,))
+        conn.commit()
+        flash('Ocorrência excluída com sucesso!', 'success')
+    except MySQLdb.Error as err: 
+        flash(f'Erro ao excluir ocorrência: {err}', 'danger')
+    except Exception as e:
+        flash(f'Ocorreu um erro inesperado ao excluir: {e}', 'danger')
+    finally:
+        if cursor:
+            cursor.close()
+        
     return redirect(url_for('gerenciar_ocorrencias'))
 
 # ✏️ Rota para editar ocorrência
