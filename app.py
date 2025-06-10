@@ -997,145 +997,91 @@ def zerar_historico_confirmado():
 def relatorios():
     conn = None
     cursor = None
-
-    supervisores_string = ""
+    # Define valores padrão para todas as variáveis no início.
+    # Isso evita que a página quebre se ocorrer um erro no banco.
+    supervisores_string = "Nenhum supervisor cadastrado."
     cfps_data = []
     viaturas_data = []
     viaturas_por_unidade = []
     viaturas_por_status = []
-    totais_viaturas = {}
-
-    try:
-        conn = get_db() # Substituído get_db_connection() por get_db()
-        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
-
-        # 1. Supervisores de Serviço (para exibição em uma única linha no relatório)
-        cursor.execute("""
-                       SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento
-                       FROM supervisores
-                       WHERE id = 1
-                       """)
-        supervisores_db_row = cursor.fetchone()
-
-        if supervisores_db_row:
-            supervisores_parts = []
-            if supervisores_db_row['supervisor_operacoes']:
-                supervisores_parts.append(f"<strong>Supervisor de Operações:</strong> {supervisores_db_row['supervisor_operacoes']}")
-            if supervisores_db_row['coordenador']:
-                supervisores_parts.append(f"<strong>Coordenador:</strong> {supervisores_db_row['coordenador']}")
-            if supervisores_db_row['supervisor_despacho']:
-                supervisores_parts.append(f"<strong>Supervisor de Despacho:</strong> {supervisores_db_row['supervisor_despacho']}")
-            if supervisores_db_row['supervisor_atendimento']:
-                supervisores_parts.append(f"<strong>Supervisor de Atendimento:</strong> {supervisores_db_row['supervisor_atendimento']}")
-            if supervisores_parts:
-                supervisores_string = " - ".join(supervisores_parts)
-            else:
-                supervisores_string = "Nenhum supervisor configurado."
-        else:
-            supervisores_string = "Nenhum supervisor cadastrado."
-
-        # 2. Contatos/CFPs Cadastrados
-        cursor.execute("""
-                       SELECT c.id, c.unidade_id, c.cfp AS nome, c.telefone, u.nome_unidade AS unidade_nome
-                       FROM contatos c
-                                JOIN unidades u ON c.unidade_id = u.id
-                       ORDER BY u.nome_unidade, c.cfp
-                       """)
-        cfps_data = cursor.fetchall()
-
-        # 3. Viaturas Cadastradas
-        cursor.execute("""
-                       SELECT v.*, u.nome_unidade AS unidade_nome
-                       FROM viaturas v
-                                JOIN unidades u ON v.unidade_id = u.id
-                       ORDER BY u.nome_unidade, v.prefixo
-                       """)
-        viaturas_data = cursor.fetchall()
-
-        # 4. Quantidade de Viaturas por Unidade
-        cursor.execute("""
-                       SELECT u.nome_unidade AS unidade_nome, COUNT(v.id) AS quantidade
-                       FROM viaturas v
-                                JOIN unidades u ON v.unidade_id = u.id
-                       GROUP BY u.nome_unidade
-                       ORDER BY u.nome_unidade
-                       """)
-        viaturas_por_unidade = cursor.fetchall()
-
-        # 5. Quantidade de Viaturas por Status
-        cursor.execute("""
-                       SELECT status, COUNT(id) AS quantidade
-                       FROM viaturas
-                       GROUP BY status
-                       ORDER BY status
-                       """)
-        viaturas_por_status = cursor.fetchall()
-
-        # 6. Tabela Específica para Funções de Viaturas (totais por tipo, baseado em STATUS)
-cursor.execute("""
-    SELECT 
-        -- Soma TOTAL de todas as viaturas registradas
-        COUNT(*) AS total_viaturas_geral,
-        
-        -- Soma de Capital: CONTA TUDO, EXCETO 'INTERIOR' e 'MOTO'
-        SUM(CASE WHEN status NOT IN ('INTERIOR', 'MOTO') THEN 1 ELSE 0 END) AS total_capital,
-        
-        -- Soma de Interior: CONTA APENAS 'INTERIOR'
-        SUM(CASE WHEN status = 'INTERIOR' THEN 1 ELSE 0 END) AS total_interior,
-        
-        -- Soma de Motos: CONTA APENAS 'MOTO'
-        SUM(CASE WHEN status = 'MOTO' THEN 1 ELSE 0 END) AS total_motos,
-        
-        -- Soma de Atendimento COPOM: CONTA 'FORÇA TATICA', 'RP', 'TRANSITO'
-        SUM(CASE WHEN status IN ('FORÇA TATICA', 'RP', 'TRANSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
-    FROM viaturas;
-""")
-totais_viaturas_row = cursor.fetchone()
-
-        # Calcular a soma total de CAPITAL + INTERIOR + MOTOS no Python
-        # Note: 'total_viaturas_geral' já inclui todas as viaturas (Capital, Interior, Motos, etc.)
-        # Então, 'total_capital_interior_motos' deve ser apenas o 'total_viaturas_geral'
-        # ou, se a intenção é somar capital (que não é interior nem moto), com interior e motos,
-        # precisamos de uma categoria explícita para "capital" que não seja interior ou moto.
-        # Por enquanto, vou assumir que 'total_viaturas_geral' já é a soma total de todas as viaturas
-        # que entram na lista de STATUS_OPTIONS.
-        if totais_viaturas_row:
-    # Lê os valores diretamente da consulta SQL corrigida
-    totais_viaturas = {
-        'total_viaturas_geral': totais_viaturas_row['total_viaturas_geral'] or 0,
-        'total_capital': totais_viaturas_row['total_capital'] or 0,
-        'total_interior': totais_viaturas_row['total_interior'] or 0,
-        'total_motos': totais_viaturas_row['total_motos'] or 0,
-        'soma_atendimento_copom': totais_viaturas_row['soma_atendimento_copom'] or 0
-    }
-    # O total geral já é calculado pela query com COUNT(*)
-    totais_viaturas['total_capital_interior_motos'] = totais_viaturas_row['total_viaturas_geral'] or 0
-else:
-    # Caso não haja viaturas, inicializa tudo com zeros
     totais_viaturas = {
         'total_viaturas_geral': 0, 'total_capital': 0, 'total_interior': 0, 
         'total_motos': 0, 'soma_atendimento_copom': 0, 'total_capital_interior_motos': 0
     }
 
-        # EXCEÇÃO CORRIGIDA PARA MySQLdb.Error
+    try:
+        conn = get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+
+        # 1. Supervisores de Serviço
+        cursor.execute("SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento FROM supervisores WHERE id = 1")
+        supervisores_db_row = cursor.fetchone()
+        if supervisores_db_row:
+            # Usando uma forma mais limpa de construir a string
+            supervisores_parts = [f"<strong>{k.replace('_', ' ').title()}:</strong> {v}" for k, v in supervisores_db_row.items() if v]
+            if supervisores_parts:
+                supervisores_string = " - ".join(supervisores_parts)
+        # 2. Contatos/CFPs Cadastrados
+        cursor.execute("""
+            SELECT c.id, u.nome_unidade AS unidade_nome, c.cfp, c.telefone
+            FROM contatos c JOIN unidades u ON c.unidade_id = u.id
+            ORDER BY u.nome_unidade, c.cfp
+        """)
+        cfps_data = cursor.fetchall()
+
+        # 3. Viaturas Cadastradas
+        cursor.execute("""
+            SELECT v.*, u.nome_unidade AS unidade_nome
+            FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
+            ORDER BY u.nome_unidade, v.prefixo
+        """)
+        viaturas_data = cursor.fetchall()
+
+        # 4. Quantidade de Viaturas por Unidade
+        cursor.execute("""
+            SELECT u.nome_unidade AS unidade_nome, COUNT(v.id) AS quantidade
+            FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
+            GROUP BY u.nome_unidade ORDER BY u.nome_unidade
+        """)
+        viaturas_por_unidade = cursor.fetchall()
+
+        # 5. Quantidade de Viaturas por Status
+        cursor.execute("SELECT status, COUNT(id) AS quantidade FROM viaturas GROUP BY status ORDER BY status")
+        viaturas_por_status = cursor.fetchall()
+
+        # 6. Tabela Específica para Funções de Viaturas (com a consulta corrigida)
+        cursor.execute("""
+            SELECT 
+                COUNT(*) AS total_viaturas_geral,
+                SUM(CASE WHEN status NOT IN ('INTERIOR', 'MOTO') THEN 1 ELSE 0 END) AS total_capital,
+                SUM(CASE WHEN status = 'INTERIOR' THEN 1 ELSE 0 END) AS total_interior,
+                SUM(CASE WHEN status = 'MOTO' THEN 1 ELSE 0 END) AS total_motos,
+                SUM(CASE WHEN status IN ('FORÇA TATICA', 'RP', 'TRANSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
+            FROM viaturas;
+        """)
+        totais_viaturas_row = cursor.fetchone()
+
+        # Processa os resultados da consulta de totais
+        if totais_viaturas_row:
+            totais_viaturas['total_viaturas_geral'] = totais_viaturas_row.get('total_viaturas_geral', 0)
+            totais_viaturas['total_capital'] = totais_viaturas_row.get('total_capital', 0)
+            totais_viaturas['total_interior'] = totais_viaturas_row.get('total_interior', 0)
+            totais_viaturas['total_motos'] = totais_viaturas_row.get('total_motos', 0)
+            totais_viaturas['soma_atendimento_copom'] = totais_viaturas_row.get('soma_atendimento_copom', 0)
+            # O total geral já é calculado pela query com COUNT(*)
+            totais_viaturas['total_capital_interior_motos'] = totais_viaturas_row.get('total_viaturas_geral', 0)
+            
     except MySQLdb.Error as err:
         flash(f"Erro no banco de dados ao carregar relatórios: {err}", 'danger')
-        # Em caso de erro, inicializa todas as variáveis para evitar "NameError" no template
-        supervisores_string = "Erro ao carregar supervisores."
-        cfps_data = []  # Mantenha o nome 'cfps_data' aqui
-        viaturas_data = []
-        viaturas_por_unidade = []
-        viaturas_por_status = []
-        totais_viaturas = {}
+        # A inicialização no início da função já garante que a página não quebre.
+        
     finally:
         if cursor:
             cursor.close()
-        # Removido 'if conn: conn.close()' pois 'g.db' é fechado por @app.teardown_appcontext
-
-        # FINAL DA FUNÇÃO: Retorna o template com TODAS as variáveis
+    # O return fica fora do try/except/finally, garantindo que a página sempre seja renderizada
     return render_template('relatorios.html',
                            supervisores_string=supervisores_string,
-                           cfps=cfps_data,  # Renomeado para 'cfps' para o template
+                           cfps=cfps_data,
                            viaturas=viaturas_data,
                            viaturas_por_unidade=viaturas_por_unidade,
                            viaturas_por_status=viaturas_por_status,
