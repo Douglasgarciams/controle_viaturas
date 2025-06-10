@@ -706,25 +706,30 @@ def gerenciar_ocorrencias():
 
     return render_template('ocorrencias_cepol.html', ocorrencias=ocorrencias)
 
-# 🗑️ Rota para excluir ocorrência
-@app.route('/excluir_ocorrencia/<int:id>', methods=['POST'])
-def excluir_ocorrencia(id):
-    conn = None
-    cursor = None
-    try:
-        conn = get_db() 
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM ocorrencias_cepol WHERE id = %s", (id,))
-        conn.commit()
-        flash('Ocorrência excluída com sucesso!', 'success')
-    except MySQLdb.Error as err: 
-        flash(f'Erro ao excluir ocorrência: {err}', 'danger')
-    except Exception as e:
-        flash(f'Ocorreu um erro inesperado ao excluir: {e}', 'danger')
-    finally:
-        if cursor:
-            cursor.close()
-        
+# 📂 Rota para ARQUIVAR ocorrência (substitui a antiga 'excluir_ocorrencia')
+@app.route('/arquivar_ocorrencia/<int:id>', methods=['POST'])
+def arquivar_ocorrencia(id):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Em vez de DELETAR, vamos ATUALIZAR o status para 'arquivado' e registrar a data
+        query = "UPDATE ocorrencias_cepol SET status = 'arquivado', arquivado_em = %s WHERE id = %s"
+        data_arquivamento = datetime.now()
+        cursor.execute(query, (data_arquivamento, id))
+        
+        conn.commit()
+        flash('Ocorrência arquivada com sucesso!', 'success')
+    except MySQLdb.Error as err:
+        flash(f'Erro ao arquivar ocorrência: {err}', 'danger')
+    except Exception as e:
+        flash(f'Ocorreu um erro inesperado ao arquivar: {e}', 'danger')
+    finally:
+        if cursor:
+            cursor.close()
+
     return redirect(url_for('gerenciar_ocorrencias'))
 
 # ✏️ Rota para editar ocorrência
