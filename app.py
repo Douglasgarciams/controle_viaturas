@@ -994,6 +994,7 @@ def zerar_historico_confirmado():
 
 # --- Rota para Relatórios ---
 # --- Rota para Relatórios ---
+# --- Rota para Relatórios ---
 @app.route('/relatorios')
 def relatorios():
     conn = None
@@ -1049,34 +1050,22 @@ def relatorios():
         cursor.execute("SELECT status, COUNT(id) AS quantidade FROM viaturas GROUP BY status ORDER BY status")
         viaturas_por_status = cursor.fetchall()
 
-        # 6. Tabela Específica para Funções de Viaturas (LÓGICA DE CÁLCULO MOVIDA PARA O PYTHON)
-        
-        # Primeiro, buscamos APENAS a lista de status do banco de dados
+        # 6. Cálculo de Totais de Viaturas (LÓGICA FEITA NO PYTHON/PANDAS)
         cursor.execute("SELECT status FROM viaturas")
         lista_status_raw = cursor.fetchall()
 
-        # Verificamos se há dados para processar
         if lista_status_raw:
-            # Convertemos os dados para um DataFrame do Pandas
             df = pd.DataFrame(lista_status_raw)
-            
-            # Passo de limpeza: removemos espaços em branco do início e fim de cada status
-            df['status'] = df['status'].fillna('').str.strip()
+            df['status'] = df['status'].fillna('').str.strip() # Limpa os dados
 
-            # Agora, calculamos cada total usando a lógica do Pandas
+            # Calcula cada total
             total_interior = (df['status'] == 'INTERIOR').sum()
             total_motos = (df['status'] == 'MOTO').sum()
-            
-            # Capital = Total de viaturas que NÃO SÃO 'INTERIOR' NEM 'MOTO'
             total_capital = (~df['status'].isin(['INTERIOR', 'MOTO'])).sum()
-            
-            # Soma Atendimento COPOM = Total de viaturas com status específicos
             soma_atendimento_copom = df['status'].isin(['FORÇATÁTICA', 'RP', 'TRÂNSITO']).sum()
-            
-            # Total Geral = Contagem total de todas as viaturas
             total_viaturas_geral = len(df)
 
-            # Preenchemos o dicionário com os resultados calculados
+            # Preenche o dicionário com os resultados
             totais_viaturas = {
                 'total_viaturas_geral': int(total_viaturas_geral),
                 'total_capital': int(total_capital),
@@ -1084,20 +1073,7 @@ def relatorios():
                 'total_motos': int(total_motos),
                 'soma_atendimento_copom': int(soma_atendimento_copom)
             }
-            # O total geral é a soma de todos
             totais_viaturas['total_capital_interior_motos'] = int(total_viaturas_geral)
-        
-        # Se não houver viaturas, o totais_viaturas já foi inicializado com zeros no início da função
-        # então não precisamos de um 'else' aqui.
-
-        # Processa os resultados da consulta de totais
-        if totais_viaturas_row:
-            totais_viaturas['total_viaturas_geral'] = totais_viaturas_row.get('total_viaturas_geral', 0)
-            totais_viaturas['total_capital'] = totais_viaturas_row.get('total_capital', 0)
-            totais_viaturas['total_interior'] = totais_viaturas_row.get('total_interior', 0)
-            totais_viaturas['total_motos'] = totais_viaturas_row.get('total_motos', 0)
-            totais_viaturas['soma_atendimento_copom'] = totais_viaturas_row.get('soma_atendimento_copom', 0)
-            totais_viaturas['total_capital_interior_motos'] = totais_viaturas_row.get('total_viaturas_geral', 0)
             
     except MySQLdb.Error as err:
         flash(f"Erro no banco de dados ao carregar relatórios: {err}", 'danger')
@@ -1106,7 +1082,6 @@ def relatorios():
         if cursor:
             cursor.close()
 
-    # O return fica fora do try/except/finally
     return render_template('relatorios.html',
                            supervisores_string=supervisores_string,
                            cfps=cfps_data,
