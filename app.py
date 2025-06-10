@@ -253,6 +253,10 @@ def ensure_supervisores_table_and_initial_entry(): # Indentação corrigida aqui
 
 # --- FIM DO NOVO CÓDIGO PARA SUPERVISORES ---
 
+# ... suas importações e inicialização do app, Flask-Login, UserMixin, load_user ...
+
+# ... suas outras rotas ...
+
 # 🔵 Página principal (ROTA INDEX EXISTENTE, AGORA MODIFICADA PARA INCLUIR SUPERVISORES)
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -902,6 +906,43 @@ def editar_ocorrencia(id):
     # 💣 NOVA Rota para LIMPAR TODAS AS OCORRÊNCIAS
 # ... (Seus imports e outras rotas) ...
 # ... (Seus imports e outras rotas) ...
+
+# Rota de Login
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        # Lógica de autenticação (EXEMPLO - ajuste para sua lógica real)
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT id, username, password FROM usuarios WHERE username = %s", (username,))
+            user_data = cursor.fetchone()
+
+            if user_data and user_data['password'] == password: # SEMPRE USE HASH DE SENHAS EM PRODUÇÃO!
+                user = User(user_data['id'], user_data['username'], user_data['password'])
+                login_user(user)
+                flash('Login bem-sucedido!', 'success')
+                # Redireciona para a página anterior ou para /ocorrencias após o login
+                next_page = request.args.get('next')
+                return redirect(next_page or url_for('ocorrencias')) # Ajuste 'ocorrencias' para sua página principal
+            else:
+                flash('Usuário ou senha incorretos.', 'danger')
+        except Exception as e:
+            print(f"Erro no login: {e}")
+            flash('Ocorreu um erro no login. Tente novamente.', 'danger')
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    # Renderiza o template de login para requisições GET ou falha de POST
+    return render_template('login.html')
 
 @app.route('/limpar_todas_ocorrencias', methods=['POST'])
 @login_required
