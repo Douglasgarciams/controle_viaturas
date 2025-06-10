@@ -952,7 +952,7 @@ def limpar_todas_ocorrencias():
         cursor = conn.cursor()
 
         # 1. Seleciona TODAS as ocorrências da tabela principal antes de deletar
-        cursor.execute("SELECT data, hora, tipo, descricao, viatura FROM ocorrencias")
+        cursor.execute("SELECT data, hora, tipo, descricao, viatura FROM ocorrencia")
         ocorrencias_para_arquivar = cursor.fetchall()
 
         if ocorrencias_para_arquivar:
@@ -965,7 +965,7 @@ def limpar_todas_ocorrencias():
             cursor.executemany(sql_insert_archive, ocorrencias_para_arquivar)
 
             # 3. Deleta as ocorrências da tabela principal
-            cursor.execute("DELETE FROM ocorrencias")
+            cursor.execute("DELETE FROM ocorrencia")
 
             conn.commit() # Confirma as alterações no banco de dados
             flash('Todas as ocorrências foram movidas para o histórico e limpas da visualização principal!', 'success')
