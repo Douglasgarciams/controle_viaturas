@@ -944,7 +944,6 @@ def login():
     return render_template('login.html')
 
 @app.route('/limpar_todas_ocorrencias', methods=['POST'])
-@login_required
 def limpar_todas_ocorrencias():
     conn = None
     cursor = None
