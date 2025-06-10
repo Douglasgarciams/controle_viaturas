@@ -943,6 +943,7 @@ def login():
     # Renderiza o template de login para requisições GET ou falha de POST
     return render_template('login.html')
 
+# 💣 NOVA Rota para LIMPAR TODAS AS OCORRÊNCIAS
 @app.route('/limpar_todas_ocorrencias', methods=['POST'])
 def limpar_todas_ocorrencias():
     conn = None
@@ -950,40 +951,18 @@ def limpar_todas_ocorrencias():
     try:
         conn = get_db()
         cursor = conn.cursor()
-
-        # 1. Seleciona TODAS as ocorrências da tabela principal antes de deletar
-        cursor.execute("SELECT data, hora, tipo, descricao, viatura FROM ocorrencia")
-        ocorrencias_para_arquivar = cursor.fetchall()
-
-        if ocorrencias_para_arquivar:
-            # 2. Insere as ocorrências na tabela de arquivo (ocorrencias_arquivadas)
-            # A coluna `data_arquivamento` será preenchida automaticamente com o timestamp atual
-            sql_insert_archive = """
-                INSERT INTO ocorrencias_arquivadas (data, hora, tipo, descricao, viatura)
-                VALUES (%s, %s, %s, %s, %s)
-            """
-            cursor.executemany(sql_insert_archive, ocorrencias_para_arquivar)
-
-            # 3. Deleta as ocorrências da tabela principal
-            cursor.execute("DELETE FROM ocorrencia")
-
-            conn.commit() # Confirma as alterações no banco de dados
-            flash('Todas as ocorrências foram movidas para o histórico e limpas da visualização principal!', 'success')
-        else:
-            flash('Não há ocorrências na visualização principal para serem limpas.', 'info')
-
-    except MySQLdb.Error as e:
-        if conn:
-            conn.rollback() # Reverte as alterações em caso de erro
-        flash(f"Erro ao limpar ocorrências: {e}", 'danger')
-        print(f"Erro ao limpar ocorrências: {e}") # Para debug no terminal
+        # EXECUTAR O COMANDO DELETE PARA TODAS AS OCORRÊNCIAS
+        cursor.execute("DELETE FROM ocorrencias_cepol")
+        conn.commit()
+        flash('Todas as ocorrências foram apagadas com sucesso!', 'success')
+    except MySQLdb.Error as err:
+        flash(f'Erro no banco de dados ao apagar todas as ocorrências: {err}', 'danger')
+    except Exception as e:
+        flash(f'Ocorreu um erro inesperado ao apagar tudo: {e}', 'danger')
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
-            if 'db' in g:
-                del g.db # Garante que a conexão seja fechada e removida de g
+            # conn.close() é gerenciado por @app.teardown_appcontext
 
     return redirect(url_for('gerenciar_ocorrencias'))
 
