@@ -1049,17 +1049,46 @@ def relatorios():
         cursor.execute("SELECT status, COUNT(id) AS quantidade FROM viaturas GROUP BY status ORDER BY status")
         viaturas_por_status = cursor.fetchall()
 
-        # 6. Tabela Específica para Funções de Viaturas (com TRIM para garantir a precisão)
-        cursor.execute("""
-            SELECT 
-                COUNT(*) AS total_viaturas_geral,
-                SUM(CASE WHEN TRIM(status) NOT IN ('INTERIOR', 'MOTO') THEN 1 ELSE 0 END) AS total_capital,
-                SUM(CASE WHEN TRIM(status) = 'INTERIOR' THEN 1 ELSE 0 END) AS total_interior,
-                SUM(CASE WHEN TRIM(status) = 'MOTO' THEN 1 ELSE 0 END) AS total_motos,
-                SUM(CASE WHEN TRIM(status) IN ('FORÇATÁTICA', 'RP', 'TRÂNSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
-            FROM viaturas;
-        """)
-        totais_viaturas_row = cursor.fetchone()
+        # 6. Tabela Específica para Funções de Viaturas (LÓGICA DE CÁLCULO MOVIDA PARA O PYTHON)
+        
+        # Primeiro, buscamos APENAS a lista de status do banco de dados
+        cursor.execute("SELECT status FROM viaturas")
+        lista_status_raw = cursor.fetchall()
+
+        # Verificamos se há dados para processar
+        if lista_status_raw:
+            # Convertemos os dados para um DataFrame do Pandas
+            df = pd.DataFrame(lista_status_raw)
+            
+            # Passo de limpeza: removemos espaços em branco do início e fim de cada status
+            df['status'] = df['status'].str.strip()
+
+            # Agora, calculamos cada total usando a lógica do Pandas
+            total_interior = (df['status'] == 'INTERIOR').sum()
+            total_motos = (df['status'] == 'MOTO').sum()
+            
+            # Capital = Total de viaturas que NÃO SÃO 'INTERIOR' NEM 'MOTO'
+            total_capital = (~df['status'].isin(['INTERIOR', 'MOTO'])).sum()
+            
+            # Soma Atendimento COPOM = Total de viaturas com status específicos
+            soma_atendimento_copom = df['status'].isin(['FORÇATÁTICA', 'RP', 'TRÂNSITO']).sum()
+            
+            # Total Geral = Contagem total de todas as viaturas
+            total_viaturas_geral = len(df)
+
+            # Preenchemos o dicionário com os resultados calculados
+            totais_viaturas = {
+                'total_viaturas_geral': int(total_viaturas_geral),
+                'total_capital': int(total_capital),
+                'total_interior': int(total_interior),
+                'total_motos': int(total_motos),
+                'soma_atendimento_copom': int(soma_atendimento_copom)
+            }
+            # O total geral é a soma de todos
+            totais_viaturas['total_capital_interior_motos'] = int(total_viaturas_geral)
+        
+        # Se não houver viaturas, o totais_viaturas já foi inicializado com zeros no início da função
+        # então não precisamos de um 'else' aqui.
 
         # Processa os resultados da consulta de totais
         if totais_viaturas_row:
