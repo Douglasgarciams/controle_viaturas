@@ -1047,6 +1047,7 @@ def relatorios():
             status_capital = [
                 'ADM', 'CFP', 'FORÇATÁTICA', 'RP', 'TRÂNSITO', 'ADJ CFP', 
                 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITÁRIO', 
+                # 'JUIZADO',  <-- Removido da soma de Capital
                 'TRANSITO/BLITZ'
             ]
 # Soma apenas as viaturas cujo status está na lista acima
