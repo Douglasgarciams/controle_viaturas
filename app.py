@@ -1072,18 +1072,25 @@ def relatorios():
         viaturas_por_status = cursor.fetchall()
 
         # 6. Tabela Específica para Funções de Viaturas (totais por tipo, baseado em STATUS)
-        cursor.execute("""
-                       SELECT SUM(CASE
-                                      WHEN status IN
-                                           ('ADM', 'CFP', 'FORÇA TATICA', 'RP', 'TRANSITO', 'ADJ CFP', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO',
-                                            'JUIZADO', 'TRANSITO/BLITZ') THEN 1
-                                      ELSE 0 END)                                                           AS total_viaturas_geral,
-                              SUM(CASE WHEN status = 'INTERIOR' THEN 1 ELSE 0 END)                          AS total_interior,
-                              SUM(CASE WHEN status = 'MOTO' THEN 1 ELSE 0 END)                              AS total_motos,
-                              SUM(CASE WHEN status IN ('FORÇA TATICA', 'RP', 'TRANSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
-                       FROM viaturas;
-                       """)
-        totais_viaturas_row = cursor.fetchone()
+cursor.execute("""
+    SELECT 
+        -- Soma TOTAL de todas as viaturas registradas
+        COUNT(*) AS total_viaturas_geral,
+        
+        -- Soma de Capital: CONTA TUDO, EXCETO 'INTERIOR' e 'MOTO'
+        SUM(CASE WHEN status NOT IN ('INTERIOR', 'MOTO') THEN 1 ELSE 0 END) AS total_capital,
+        
+        -- Soma de Interior: CONTA APENAS 'INTERIOR'
+        SUM(CASE WHEN status = 'INTERIOR' THEN 1 ELSE 0 END) AS total_interior,
+        
+        -- Soma de Motos: CONTA APENAS 'MOTO'
+        SUM(CASE WHEN status = 'MOTO' THEN 1 ELSE 0 END) AS total_motos,
+        
+        -- Soma de Atendimento COPOM: CONTA 'FORÇA TATICA', 'RP', 'TRANSITO'
+        SUM(CASE WHEN status IN ('FORÇA TATICA', 'RP', 'TRANSITO') THEN 1 ELSE 0 END) AS soma_atendimento_copom
+    FROM viaturas;
+""")
+totais_viaturas_row = cursor.fetchone()
 
         # Calcular a soma total de CAPITAL + INTERIOR + MOTOS no Python
         # Note: 'total_viaturas_geral' já inclui todas as viaturas (Capital, Interior, Motos, etc.)
@@ -1093,26 +1100,22 @@ def relatorios():
         # Por enquanto, vou assumir que 'total_viaturas_geral' já é a soma total de todas as viaturas
         # que entram na lista de STATUS_OPTIONS.
         if totais_viaturas_row:
-            totais_viaturas = {
-                'total_viaturas_geral': totais_viaturas_row['total_viaturas_geral'],
-                'total_interior': totais_viaturas_row['total_interior'],
-                'total_motos': totais_viaturas_row['total_motos'],
-                'soma_atendimento_copom': totais_viaturas_row['soma_atendimento_copom']
-            }
-            # Se 'total_viaturas_geral' já é o total de todas as viaturas válidas,
-            # não precisamos somar novamente 'total_interior' e 'total_motos' a ele para um "total geral".
-            # Se a ideia era separar CAPITAL, INTERIOR e MOTOS e depois somá-los,
-            # a query SQL precisaria ser mais específica para CAPITAL.
-            # Por agora, 'total_capital_interior_motos' será igual a 'total_viaturas_geral'
-            # (assumindo que 'total_viaturas_geral' é de fato o total de todas as viaturas relevantes).
-            # Se você tem uma definição diferente para "capital", me avise.
-            totais_viaturas['total_capital_interior_motos'] = totais_viaturas_row['total_viaturas_geral']
-        else:
-            # Caso não haja viaturas, inicializa com zeros
-            totais_viaturas = {
-                'total_viaturas_geral': 0, 'total_interior': 0, 'total_motos': 0,
-                'soma_atendimento_copom': 0, 'total_capital_interior_motos': 0
-            }
+    # Lê os valores diretamente da consulta SQL corrigida
+    totais_viaturas = {
+        'total_viaturas_geral': totais_viaturas_row['total_viaturas_geral'] or 0,
+        'total_capital': totais_viaturas_row['total_capital'] or 0,
+        'total_interior': totais_viaturas_row['total_interior'] or 0,
+        'total_motos': totais_viaturas_row['total_motos'] or 0,
+        'soma_atendimento_copom': totais_viaturas_row['soma_atendimento_copom'] or 0
+    }
+    # O total geral já é calculado pela query com COUNT(*)
+    totais_viaturas['total_capital_interior_motos'] = totais_viaturas_row['total_viaturas_geral'] or 0
+else:
+    # Caso não haja viaturas, inicializa tudo com zeros
+    totais_viaturas = {
+        'total_viaturas_geral': 0, 'total_capital': 0, 'total_interior': 0, 
+        'total_motos': 0, 'soma_atendimento_copom': 0, 'total_capital_interior_motos': 0
+    }
 
         # EXCEÇÃO CORRIGIDA PARA MySQLdb.Error
     except MySQLdb.Error as err:
