@@ -993,8 +993,6 @@ def zerar_historico_confirmado():
     return redirect(url_for('historico'))
 
 # --- Rota para Relatórios ---
-# --- Rota para Relatórios ---
-# --- Rota para Relatórios ---
 @app.route('/relatorios')
 def relatorios():
     conn = None
@@ -1014,7 +1012,8 @@ def relatorios():
         conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
-        # 1. Supervisores de Serviço
+        # --- Seção 1 a 5: Buscando dados gerais (Supervisores, Contatos, etc.) ---
+        # (O código para buscar supervisores, contatos, viaturas, etc., continua aqui igual ao seu original)
         cursor.execute("SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento FROM supervisores WHERE id = 1")
         supervisores_db_row = cursor.fetchone()
         if supervisores_db_row:
@@ -1022,58 +1021,42 @@ def relatorios():
             if supervisores_parts:
                 supervisores_string = " - ".join(supervisores_parts)
 
-        # 2. Contatos/CFPs Cadastrados
-        cursor.execute("""
-            SELECT c.id, u.nome_unidade AS unidade_nome, c.cfp, c.telefone
-            FROM contatos c JOIN unidades u ON c.unidade_id = u.id
-            ORDER BY u.nome_unidade, c.cfp
-        """)
+        cursor.execute("SELECT c.id, u.nome_unidade AS unidade_nome, c.cfp, c.telefone FROM contatos c JOIN unidades u ON c.unidade_id = u.id ORDER BY u.nome_unidade, c.cfp")
         cfps_data = cursor.fetchall()
 
-        # 3. Viaturas Cadastradas
-        cursor.execute("""
-            SELECT v.*, u.nome_unidade AS unidade_nome
-            FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
-            ORDER BY u.nome_unidade, v.prefixo
-        """)
+        cursor.execute("SELECT v.*, u.nome_unidade AS unidade_nome FROM viaturas v JOIN unidades u ON v.unidade_id = u.id ORDER BY u.nome_unidade, v.prefixo")
         viaturas_data = cursor.fetchall()
 
-        # 4. Quantidade de Viaturas por Unidade
-        cursor.execute("""
-            SELECT u.nome_unidade AS unidade_nome, COUNT(v.id) AS quantidade
-            FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
-            GROUP BY u.nome_unidade ORDER BY u.nome_unidade
-        """)
+        cursor.execute("SELECT u.nome_unidade AS unidade_nome, COUNT(v.id) AS quantidade FROM viaturas v JOIN unidades u ON v.unidade_id = u.id GROUP BY u.nome_unidade ORDER BY u.nome_unidade")
         viaturas_por_unidade = cursor.fetchall()
 
-        # 5. Quantidade de Viaturas por Status
         cursor.execute("SELECT status, COUNT(id) AS quantidade FROM viaturas GROUP BY status ORDER BY status")
         viaturas_por_status = cursor.fetchall()
 
-        # 6. Cálculo de Totais de Viaturas (LÓGICA FEITA NO PYTHON/PANDAS)
+        # --- Seção 6: Cálculo de Totais de Viaturas (LÓGICA CORRETA COM PANDAS) ---
         cursor.execute("SELECT status FROM viaturas")
         lista_status_raw = cursor.fetchall()
 
         if lista_status_raw:
             df = pd.DataFrame(lista_status_raw)
-            df['status'] = df['status'].fillna('').str.strip() # Limpa os dados
+            df['status'] = df['status'].fillna('').str.strip()
 
-            # Calcula cada total
             total_interior = (df['status'] == 'INTERIOR').sum()
             total_motos = (df['status'] == 'MOTO').sum()
             total_capital = (~df['status'].isin(['INTERIOR', 'MOTO'])).sum()
             soma_atendimento_copom = df['status'].isin(['FORÇATÁTICA', 'RP', 'TRÂNSITO']).sum()
             total_viaturas_geral = len(df)
 
-            # Preenche o dicionário com os resultados
             totais_viaturas = {
                 'total_viaturas_geral': int(total_viaturas_geral),
                 'total_capital': int(total_capital),
                 'total_interior': int(total_interior),
                 'total_motos': int(total_motos),
-                'soma_atendimento_copom': int(soma_atendimento_copom)
+                'soma_atendimento_copom': int(soma_atendimento_copom),
+                'total_capital_interior_motos': int(total_viaturas_geral)
             }
-            totais_viaturas['total_capital_interior_motos'] = int(total_viaturas_geral)
+            # Adicionando um print para os logs do Render, para termos certeza
+            print(f"DEBUG: Totais calculados: {totais_viaturas}")
             
     except MySQLdb.Error as err:
         flash(f"Erro no banco de dados ao carregar relatórios: {err}", 'danger')
