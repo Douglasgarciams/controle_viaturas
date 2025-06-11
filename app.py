@@ -659,6 +659,7 @@ def gerenciar_ocorrencias():
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         if request.method == 'POST':
+            viatura_prefixo = request.form.get('viatura_prefixo', '').strip()
             fato = request.form.get('fato', '').strip()
             status = request.form.get('status', '').strip()
             protocolo = request.form.get('protocolo', '').strip()
