@@ -661,37 +661,49 @@ def gerenciar_ocorrencias():
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         if request.method == 'POST':
-            # Pega todos os dados do formulário
-            viatura_prefixo = request.form.get('viatura_prefixo', '').strip()
-            fato = request.form.get('fato', '').strip()
-            status = request.form.get('status', '').strip()
-            protocolo = request.form.get('protocolo', '').strip()
-            ro_cadg = request.form.get('ro_cadg', '').strip()
-            chegada = request.form.get('chegada', '').strip()
-            entrega_ro = request.form.get('entrega_ro', '').strip()
-            saida = request.form.get('saida', '').strip()
+    # Pega todos os dados do formulário
+    viatura_prefixo = request.form.get('viatura_prefixo', '').strip()
+    fato = request.form.get('fato', '').strip()
+    status = request.form.get('status', '').strip()
+    protocolo = request.form.get('protocolo', '').strip()
+    ro_cadg = request.form.get('ro_cadg', '').strip()
+    chegada = request.form.get('chegada', '').strip()
+    entrega_ro = request.form.get('entrega_ro', '').strip()
+    saida = request.form.get('saida', '').strip()
 
-            # Validação Mínima (só Fato e Protocolo são obrigatórios)
-            #if not fato or not protocolo:
-                #flash('Os campos "Fato" e "Protocolo" são obrigatórios!', 'danger')
-                #return redirect(url_for('gerenciar_ocorrencias'))
+    # # Validação Mínima foi DESATIVADA (comentada)
+    # if not fato or not protocolo:
+    #     flash('Os campos "Fato" e "Protocolo" são obrigatórios!', 'danger')
+    #     return redirect(url_for('gerenciar_ocorrencias'))
 
-            # Cálculo de Tempo Condicional
-            tempo_total_dp = None
-            tempo_entrega_dp = None
-            if chegada and entrega_ro and saida:
-                try:
-                    fmt = "%H:%M"
-                    chegada_dt = datetime.strptime(chegada, fmt)
-                    entrega_dt = datetime.strptime(entrega_ro, fmt)
-                    saida_dt = datetime.strptime(saida, fmt)
-                    if saida_dt < chegada_dt: saida_dt += timedelta(days=1)
-                    if entrega_dt < chegada_dt: entrega_dt += timedelta(days=1)
-                    tempo_total_dp = format_minutes_to_hh_mm(int((saida_dt - chegada_dt).total_seconds() // 60))
-                    tempo_entrega_dp = format_minutes_to_hh_mm(int((entrega_dt - chegada_dt).total_seconds() // 60))
-                except ValueError:
-                    flash('Um dos horários fornecidos tem formato inválido. Utilize HH:MM.', 'danger')
-                    return redirect(url_for('gerenciar_ocorrencias'))
+    # Cálculo de Tempo Condicional
+    tempo_total_dp = None
+    tempo_entrega_dp = None
+    if chegada and entrega_ro and saida:
+        try:
+            fmt = "%H:%M"
+            chegada_dt = datetime.strptime(chegada, fmt)
+            entrega_dt = datetime.strptime(entrega_ro, fmt)
+            saida_dt = datetime.strptime(saida, fmt)
+            if saida_dt < chegada_dt: saida_dt += timedelta(days=1)
+            if entrega_dt < chegada_dt: entrega_dt += timedelta(days=1)
+            tempo_total_dp = format_minutes_to_hh_mm(int((saida_dt - chegada_dt).total_seconds() // 60))
+            tempo_entrega_dp = format_minutes_to_hh_mm(int((entrega_dt - chegada_dt).total_seconds() // 60))
+        except ValueError:
+            flash('Um dos horários fornecidos tem formato inválido. Utilize HH:MM.', 'danger')
+            return redirect(url_for('gerenciar_ocorrencias'))
+
+    # Comando INSERT para salvar os dados
+    cursor.execute("""
+        INSERT INTO ocorrencias_cepol
+        (viatura_prefixo, fato, status, protocolo, ro_cadg, chegada_delegacia, entrega_ro, saida_delegacia, tempo_total_dp, tempo_entrega_dp)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, 
+    (viatura_prefixo or None, fato, status, protocolo, ro_cadg, chegada or None, entrega_ro or None, saida or None, tempo_total_dp, tempo_entrega_dp))
+
+    conn.commit()
+    flash('Ocorrência registrada com sucesso!', 'success')
+    return redirect(url_for('gerenciar_ocorrencias'))
 
             # Comando INSERT Corrigido com a sua ordem de colunas
             cursor.execute("""
