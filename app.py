@@ -694,7 +694,7 @@ def gerenciar_ocorrencias():
 
             cursor.execute("""
                 INSERT INTO ocorrencias_cepol
-                (fato, status, protocolo, ro_cadg, chegada_delegacia, entrega_ro, saida_delegacia,
+                (viatura_prefixo, fato, status, protocolo, ro_cadg, chegada_delegacia, entrega_ro, saida_delegacia,
                  tempo_total_dp, tempo_entrega_dp)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (fato, status, protocolo, ro_cadg, chegada, entrega_ro, saida,
