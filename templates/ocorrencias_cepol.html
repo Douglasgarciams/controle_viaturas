@@ -103,6 +103,7 @@
             <thead class="bg-primary text-white">
                 <tr>
                     <th>ID</th>
+                    <th>Viatura</th>
                     <th>Fato</th>
                     <th>Status</th>
                     <th>Protocolo</th>
@@ -119,6 +120,7 @@
                 {% for ocorrencia in ocorrencias %}
                 <tr>
                     <td>{{ ocorrencia.id }}</td>
+                    <td>{{ ocorrencia.viatura_prefixo or 'N/D' }}</td>
                     <td>{{ ocorrencia.fato }}</td>
                     <td>{{ ocorrencia.status }}</td>
                     <td>{{ ocorrencia.protocolo }}</td>
