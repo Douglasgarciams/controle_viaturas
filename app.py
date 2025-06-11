@@ -672,9 +672,9 @@ def gerenciar_ocorrencias():
             saida = request.form.get('saida', '').strip()
 
             # Validação Mínima (só Fato e Protocolo são obrigatórios)
-            if not fato or not protocolo:
-                flash('Os campos "Fato" e "Protocolo" são obrigatórios!', 'danger')
-                return redirect(url_for('gerenciar_ocorrencias'))
+            #if not fato or not protocolo:
+                #flash('Os campos "Fato" e "Protocolo" são obrigatórios!', 'danger')
+                #return redirect(url_for('gerenciar_ocorrencias'))
 
             # Cálculo de Tempo Condicional
             tempo_total_dp = None
