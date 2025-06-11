@@ -748,62 +748,62 @@ def arquivar_ocorrencia(id):
 
     return redirect(url_for('gerenciar_ocorrencias'))
 
-# ✏️ Rota para editar ocorrência
+# ✏️ Rota para editar ocorrência (com campo de viatura)
 @app.route('/editar_ocorrencia/<int:id>', methods=['GET', 'POST'])
 def editar_ocorrencia(id):
     conn = None
     cursor = None
-    ocorrencia = None
     try:
-        conn = get_db() # Substituído get_db_connection() por get_db()
+        conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         if request.method == 'POST':
+            # Pega todos os dados do formulário, incluindo o novo campo
             fato = request.form.get('fato', '').strip()
             status = request.form.get('status', '').strip()
             protocolo = request.form.get('protocolo', '').strip()
+            viatura_prefixo = request.form.get('viatura_prefixo', '').strip() # <-- NOVO
             ro_cadg = request.form.get('ro_cadg', '').strip()
             chegada = request.form.get('chegada', '').strip()
             entrega_ro = request.form.get('entrega_ro', '').strip()
             saida = request.form.get('saida', '').strip()
 
-            if not all([fato, status, protocolo, ro_cadg, chegada, entrega_ro, saida]):
-                flash('Preencha todos os campos obrigatórios!', 'danger')
+            if not fato or not protocolo:
+                flash('Os campos "Fato" e "Protocolo" são obrigatórios!', 'danger')
                 return redirect(url_for('editar_ocorrencia', id=id))
 
-            fmt = "%H:%M"
-            try:
-                chegada_dt = datetime.strptime(chegada, fmt)
-                entrega_dt = datetime.strptime(entrega_ro, fmt)
-                saida_dt = datetime.strptime(saida, fmt)
-            except ValueError:
-                flash('Formato de horário inválido. Utilize HH:MM.', 'danger')
-                return redirect(url_for('editar_ocorrencia', id=id))
+            tempo_total_dp = None
+            tempo_entrega_dp = None
+            if chegada and entrega_ro and saida:
+                try:
+                    fmt = "%H:%M"
+                    chegada_dt = datetime.strptime(chegada, fmt)
+                    entrega_dt = datetime.strptime(entrega_ro, fmt)
+                    saida_dt = datetime.strptime(saida, fmt)
+                    if saida_dt < chegada_dt: saida_dt += timedelta(days=1)
+                    if entrega_dt < chegada_dt: entrega_dt += timedelta(days=1)
+                    tempo_total_dp = format_minutes_to_hh_mm(int((saida_dt - chegada_dt).total_seconds() // 60))
+                    tempo_entrega_dp = format_minutes_to_hh_mm(int((entrega_dt - chegada_dt).total_seconds() // 60))
+                except ValueError:
+                    flash('Formato de horário inválido. Utilize HH:MM.', 'danger')
+                    return redirect(url_for('editar_ocorrencia', id=id))
 
-            if saida_dt < chegada_dt:
-                saida_dt += timedelta(days=1)
-            if entrega_dt < chegada_dt:
-                entrega_dt += timedelta(days=1)
-
-            tempo_total_min = int((saida_dt - chegada_dt).total_seconds() // 60)
-            tempo_entrega_min = int((entrega_dt - chegada_dt).total_seconds() // 60)
-
-            # A FUNÇÃO 'format_minutes_to_hh_mm' JÁ ESTÁ DEFINIDA NO TOPO
-            tempo_total_dp = format_minutes_to_hh_mm(tempo_total_min)
-            tempo_entrega_dp = format_minutes_to_hh_mm(tempo_entrega_min)
-
+            # ATUALIZADO: Adiciona 'viatura_prefixo' ao comando UPDATE
             cursor.execute("""
                 UPDATE ocorrencias_cepol
-                SET fato=%s, status=%s, protocolo=%s, ro_cadg=%s, chegada_delegacia=%s,
-                    entrega_ro=%s, saida_delegacia=%s, tempo_total_dp=%s, tempo_entrega_dp=%s
+                SET fato=%s, status=%s, protocolo=%s, ro_cadg=%s, viatura_prefixo=%s, 
+                    chegada_delegacia=%s, entrega_ro=%s, saida_delegacia=%s, 
+                    tempo_total_dp=%s, tempo_entrega_dp=%s
                 WHERE id = %s
-            """, (fato, status, protocolo, ro_cadg, chegada, entrega_ro, saida,
+            """, (fato, status, protocolo, ro_cadg, viatura_prefixo or None, 
+                  chegada or None, entrega_ro or None, saida or None, 
                   tempo_total_dp, tempo_entrega_dp, id))
+            
             conn.commit()
             flash('Ocorrência atualizada com sucesso!', 'success')
             return redirect(url_for('gerenciar_ocorrencias'))
 
-        # BUSCA DA OCORRÊNCIA (APENAS UMA VEZ)
+        # --- Lógica de GET (carrega os dados da ocorrência para exibir no formulário) ---
         cursor.execute("SELECT * FROM ocorrencias_cepol WHERE id = %s", (id,))
         ocorrencia = cursor.fetchone()
 
@@ -811,19 +811,18 @@ def editar_ocorrencia(id):
             flash('Ocorrência não encontrada.', 'danger')
             return redirect(url_for('gerenciar_ocorrencias'))
 
-        # A FUNÇÃO 'ensure_hh_mm_format_for_display' JÁ ESTÁ DEFINIDA NO TOPO
+        # A função ensure_hh_mm_format_for_display que você já tem
         ocorrencia['chegada_delegacia'] = ensure_hh_mm_format_for_display(ocorrencia.get('chegada_delegacia'))
         ocorrencia['entrega_ro'] = ensure_hh_mm_format_for_display(ocorrencia.get('entrega_ro'))
         ocorrencia['saida_delegacia'] = ensure_hh_mm_format_for_display(ocorrencia.get('saida_delegacia'))
 
-    except MySQLdb.Error as err: # Exceção corrigida
+    except MySQLdb.Error as err:
         flash(f"Erro no banco de dados ao carregar/atualizar: {err}", 'danger')
     except Exception as e:
         flash(f"Ocorreu um erro inesperado: {e}", 'danger')
     finally:
         if cursor:
             cursor.close()
-        # conn.close() removido
 
     return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
 

@@ -66,6 +66,10 @@
                         <label for="protocolo" class="form-label">Protocolo:</label>
                         <input type="text" class="form-control" id="protocolo" name="protocolo" value="{{ ocorrencia.protocolo or '' }}" required>
                     </div>
+                    <div class="col-md-4"> {# Ou outro tamanho de coluna que se encaixe no seu layout #}
+                        <label for="viatura_prefixo" class="form-label">Viatura (Prefixo):</label>
+                        <input type="text" class="form-control" id="viatura_prefixo" name="viatura_prefixo" value="{{ ocorrencia.viatura_prefixo or '' }}">
+                    </div>
                     <div class="col-md-4">
                         <label for="ro_cadg" class="form-label">R.O. / CADG:</label>
                         <input type="text" class="form-control" id="ro_cadg" name="ro_cadg" value="{{ ocorrencia.ro_cadg or '' }}" required>
