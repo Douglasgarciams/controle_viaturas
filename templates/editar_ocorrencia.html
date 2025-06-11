@@ -46,19 +46,14 @@
                         {# O "value" pré-preenche o campo com os dados da ocorrência vinda do banco #}
                         <input type="text" class="form-control" id="fato" name="fato" value="{{ ocorrencia.fato or '' }}" required>
                     </div>
-                    {# Campo Status #}
+                    {# Campo Status (simplificado) #}
                     <div class="col-md-6">
                         <label for="status" class="form-label">Status:</label>
-                        {# Para selects, a opção correta é marcada como "selected" #}
-                        <select class="form-select" id="status" name="status" required>
-                            <option value="">Selecione um Status</option> {# Opção padrão vazia #}
+                        <select class="form-select" id="status" name="status">
+                            <option value="">Selecione um Status</option>
                             <option value="TCO" {% if ocorrencia.status == 'TCO' %}selected{% endif %}>TCO</option>
                             <option value="APF" {% if ocorrencia.status == 'APF' %}selected{% endif %}>APF</option>
-                            <option value="Flagrante" {% if ocorrencia.status == 'Flagrante' %}selected{% endif %}>Flagrante</option>
-                            <option value="Apreensão" {% if ocorrencia.status == 'Apreensão' %}selected{% endif %}>Apreensão</option>
-                            <option value="Boletim de Ocorrência" {% if ocorrencia.status == 'Boletim de Ocorrência' %}selected{% endif %}>Boletim de Ocorrência</option>
-                            <option value="Outros" {% if ocorrencia.status == 'Outros' %}selected{% endif %}>Outros</option>
-                            {# Adicione mais opções conforme a necessidade para o seu sistema #}
+                            <option value="ENTREGA" {% if ocorrencia.status == 'ENTREGA' %}selected{% endif %}>ENTREGA</option>
                         </select>
                     </div>
                     {# Campo Protocolo #}
