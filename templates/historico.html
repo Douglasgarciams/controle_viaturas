@@ -43,10 +43,10 @@
         <thead class="bg-secondary text-white">
             <tr>
                 <th>Data Registro</th>
+                <th>Viatura</th>
                 <th>Fato</th>
                 <th>Status</th>
                 <th>Protocolo</th>
-                <th>Viatura</th>
                 <th>R.O CADG</th>
                 <th>Chegada</th>
                 <th>Entrega R.O</th>
@@ -59,10 +59,10 @@
             {% for ocorrencia in ocorrencias %}
             <tr>
                 <td>{{ ocorrencia.data_registro.strftime('%d/%m/%Y %H:%M') if ocorrencia.data_registro else 'N/A' }}</td>
+                <td>{{ ocorrencia.viatura_prefixo or 'N/D' }}</td>
                 <td>{{ ocorrencia.fato }}</td>
                 <td>{{ ocorrencia.status }}</td>
                 <td>{{ ocorrencia.protocolo }}</td>
-                <td>{{ ocorrencia.viatura_prefixo or 'N/D' }}</td>
                 <td>{{ ocorrencia.ro_cadg }}</td>
                 <td>{{ ocorrencia.chegada_delegacia }}</td>
                 <td>{{ ocorrencia.entrega_ro }}</td>
