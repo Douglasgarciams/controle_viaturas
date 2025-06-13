@@ -921,20 +921,59 @@ def historico():
     conn = None
     cursor = None
     historico_ocorrencias = []
+    
+    # Variáveis para os dados dos gráficos
+    chart_status_data = {}
+    chart_tempo_dp_data = {}
+
     try:
         conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
-        # Busca os dados da tabela de histórico, não da tabela principal
-        cursor.execute("SELECT * FROM historico_ocorrencias ORDER BY id DESC")
+        
+        # Busca todos os dados necessários do histórico de uma vez
+        cursor.execute("SELECT data_registro, status, delegacia, tempo_total_dp FROM historico_ocorrencias")
         historico_ocorrencias = cursor.fetchall()
+
+        if historico_ocorrencias:
+            df = pd.DataFrame(historico_ocorrencias)
+            # Garante que a data_registro seja do tipo datetime
+            df['data_registro'] = pd.to_datetime(df['data_registro'])
+            # Limpa o campo status
+            df['status'] = df['status'].fillna('N/A').str.strip()
+
+            # --- PREPARAÇÃO PARA O GRÁFICO 1 (Ocorrências por Status por Mês) ---
+            # Cria uma coluna com o formato 'Ano-Mês' para agrupar
+            df['mes'] = df['data_registro'].dt.to_period('M').astype(str)
+            # Agrupa os dados por mês e status e conta as ocorrências
+            status_por_mes = df.groupby(['mes', 'status']).size().unstack(fill_value=0)
+            
+            # Formata os dados para o Chart.js
+            chart_status_data = {
+                'labels': status_por_mes.index.tolist(), # Meses (ex: ['2025-05', '2025-06'])
+                'datasets': []
+            }
+            cores = ['rgba(54, 162, 235, 0.7)', 'rgba(255, 99, 132, 0.7)', 'rgba(75, 192, 192, 0.7)']
+            i = 0
+            for status_nome in status_por_mes.columns:
+                chart_status_data['datasets'].append({
+                    'label': status_nome,
+                    'data': status_por_mes[status_nome].tolist(),
+                    'backgroundColor': cores[i % len(cores)]
+                })
+                i += 1
+
+            # (A lógica para o Gráfico 2 será adicionada aqui depois)
+
     except MySQLdb.Error as err:
         flash(f"Erro ao carregar o histórico: {err}", 'danger')
     finally:
         if cursor:
             cursor.close()
             
-    # Renderiza um NOVO template chamado historico.html
-    return render_template('historico.html', ocorrencias=historico_ocorrencias)
+    # Renderiza o template, passando os dados das ocorrências e do gráfico
+    return render_template('historico.html', 
+                           ocorrencias=historico_ocorrencias, 
+                           chart_status_data=chart_status_data)
 
     # 📜 Rota para exportar o HISTÓRICO COMPLETO para Excel
 # 📜 Rota para exportar o HISTÓRICO COMPLETO para Excel
