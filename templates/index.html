@@ -11,14 +11,26 @@
   <style>
     /* Estilos Globais e Fundo Tecnológico */
     body {
-      background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #0f0f1a 100%);
-      color: #e0e0e0;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* Fonte mais moderna */
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
+    /* 1. IMAGEM DE FUNDO: com uma camada escura para legibilidade */
+    /* Lembre-se de trocar 'fundo.jpg' pelo nome exato da sua imagem */
+    background-image: 
+        linear-gradient(rgba(15, 15, 26, 0.8), rgba(15, 15, 26, 0.8)), /* Camada escura semitransparente */
+        url("{{ url_for('static', filename='img/logocopom.png') }}"); /* Sua imagem de fundo */
+
+    /* 2. PROPRIEDADES DA IMAGEM: para cobrir a tela toda */
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+
+    /* 3. SEU ESTILO ORIGINAL (MANTIDO) */
+    color: #e0e0e0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
 
     /* Cabeçalho */
     header {
