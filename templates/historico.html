@@ -37,17 +37,6 @@
     </div>
 
 </div>
-{# Só mostra o card do gráfico se houver dados para exibir #}
-{% if chart_status_data.labels %}
-<div class="card mb-4">
-    <div class="card-header">
-        Estatísticas de Ocorrências por Mês
-    </div>
-    <div class="card-body">
-        <canvas id="graficoStatusPorMes"></canvas>
-    </div>
-</div>
-{% endif %}
 
 <div class="table-responsive shadow-sm rounded">
     <table class="table table-striped table-hover">
@@ -91,51 +80,4 @@
         </tbody>
     </table>
 </div>
-{# Só executa o script se houver dados para o gráfico #}
-{% if chart_status_data.labels %}
-<script>
-    // Espera o documento HTML inteiro ser carregado antes de executar o código
-    document.addEventListener('DOMContentLoaded', function () {
-
-        // Pega os dados que o Python enviou para o template
-        const statusData = {{ chart_status_data | tojson }};
-
-        // Pega o elemento <canvas> que criamos mais acima na página
-        const ctxStatus = document.getElementById('graficoStatusPorMes').getContext('2d');
-
-        // Cria o gráfico usando a biblioteca Chart.js
-        new Chart(ctxStatus, {
-            type: 'bar', // Tipo de gráfico: barras
-            data: {
-                labels: statusData.labels, // Eixo X: os meses
-                datasets: statusData.datasets // As barras: cada status é um 'dataset'
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                  title: {
-                    display: true,
-                    text: 'Quantidade de Ocorrências por Status'
-                  },
-                },
-                scales: {
-                    x: {
-                        stacked: true, // Empilha as barras do mesmo mês
-                    },
-                    y: {
-                        stacked: true, // Habilita o empilhamento no eixo Y
-                        beginAtZero: true,
-                        ticks: {
-                           // Garante que o eixo Y só mostre números inteiros
-                           stepSize: 1 
-                        }
-                    }
-                }
-            }
-        });
-
-    });
-</script>
-{% endif %}
-
 {% endblock %}
