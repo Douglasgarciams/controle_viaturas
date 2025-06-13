@@ -102,7 +102,7 @@
             <caption>Lista completa de ocorrências</caption>
             <thead class="bg-primary text-white">
                 <tr>
-                    <th>ID</th>
+                    <th>Data Registro</th>
                     <th>Viatura</th>
                     <th>Fato</th>
                     <th>Status</th>
@@ -119,7 +119,7 @@
             <tbody>
                 {% for ocorrencia in ocorrencias %}
                 <tr>
-                    <td>{{ ocorrencia.id }}</td>
+                    <td>{{ ocorrencia.data_registro.strftime('%d/%m/%Y %H:%M') }}</td>
                     <td>{{ ocorrencia.viatura_prefixo or 'N/D' }}</td>
                     <td>{{ ocorrencia.fato }}</td>
                     <td>{{ ocorrencia.status }}</td>
