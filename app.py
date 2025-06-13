@@ -749,6 +749,7 @@ def arquivar_ocorrencia(id):
     return redirect(url_for('gerenciar_ocorrencias'))
 
 # ✏️ Rota para editar ocorrência (com campo de viatura)
+# ✏️ Rota para editar ocorrência (com campo de delegacia)
 @app.route('/editar_ocorrencia/<int:id>', methods=['GET', 'POST'])
 def editar_ocorrencia(id):
     conn = None
@@ -759,19 +760,18 @@ def editar_ocorrencia(id):
 
         if request.method == 'POST':
             # Pega todos os dados do formulário, incluindo o novo campo
+            delegacia = request.form.get('delegacia', '').strip() # <-- NOVO
             fato = request.form.get('fato', '').strip()
             status = request.form.get('status', '').strip()
             protocolo = request.form.get('protocolo', '').strip()
-            viatura_prefixo = request.form.get('viatura_prefixo', '').strip() # <-- NOVO
+            viatura_prefixo = request.form.get('viatura_prefixo', '').strip()
             ro_cadg = request.form.get('ro_cadg', '').strip()
             chegada = request.form.get('chegada', '').strip()
             entrega_ro = request.form.get('entrega_ro', '').strip()
             saida = request.form.get('saida', '').strip()
 
-            if not fato or not protocolo:
-                flash('Os campos "Fato" e "Protocolo" são obrigatórios!', 'danger')
-                return redirect(url_for('editar_ocorrencia', id=id))
-
+            # A validação de campos obrigatórios foi removida, mas pode ser adicionada aqui se necessário
+            
             tempo_total_dp = None
             tempo_entrega_dp = None
             if chegada and entrega_ro and saida:
@@ -788,14 +788,14 @@ def editar_ocorrencia(id):
                     flash('Formato de horário inválido. Utilize HH:MM.', 'danger')
                     return redirect(url_for('editar_ocorrencia', id=id))
 
-            # ATUALIZADO: Adiciona 'viatura_prefixo' ao comando UPDATE
+            # ATUALIZADO: Adiciona 'delegacia' ao comando UPDATE
             cursor.execute("""
                 UPDATE ocorrencias_cepol
-                SET fato=%s, status=%s, protocolo=%s, ro_cadg=%s, viatura_prefixo=%s, 
+                SET delegacia=%s, fato=%s, status=%s, protocolo=%s, ro_cadg=%s, viatura_prefixo=%s, 
                     chegada_delegacia=%s, entrega_ro=%s, saida_delegacia=%s, 
                     tempo_total_dp=%s, tempo_entrega_dp=%s
                 WHERE id = %s
-            """, (fato, status, protocolo, ro_cadg, viatura_prefixo or None, 
+            """, (delegacia or None, fato, status, protocolo, ro_cadg, viatura_prefixo or None, 
                   chegada or None, entrega_ro or None, saida or None, 
                   tempo_total_dp, tempo_entrega_dp, id))
             
@@ -811,7 +811,7 @@ def editar_ocorrencia(id):
             flash('Ocorrência não encontrada.', 'danger')
             return redirect(url_for('gerenciar_ocorrencias'))
 
-        # A função ensure_hh_mm_format_for_display que você já tem
+        # Formatação de campos de tempo para exibição
         ocorrencia['chegada_delegacia'] = ensure_hh_mm_format_for_display(ocorrencia.get('chegada_delegacia'))
         ocorrencia['entrega_ro'] = ensure_hh_mm_format_for_display(ocorrencia.get('entrega_ro'))
         ocorrencia['saida_delegacia'] = ensure_hh_mm_format_for_display(ocorrencia.get('saida_delegacia'))

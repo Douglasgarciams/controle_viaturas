@@ -81,6 +81,10 @@
                         <label for="saida" class="form-label">Saída da Delegacia (HH:MM):</label>
                         <input type="time" class="form-control" id="saida" name="saida" value="{{ ocorrencia.saida_delegacia or '' }}" required>
                     </div>
+                    <div class="col-md-4"> {# Ou outro tamanho de coluna que se encaixe no seu layout #}
+                        <label for="delegacia" class="form-label">Delegacia:</label>
+                        <input type="text" class="form-control" id="delegacia" name="delegacia" value="{{ ocorrencia.delegacia or '' }}" placeholder="Digite o nome da delegacia">
+                    </div>
                     {# Campos de tempo total e entrega (somente leitura, preenchidos pelo JS) #}
                     <div class="col-md-6">
                         <label for="tempo_total_dp" class="form-label">Tempo Total na DP:</label>
