@@ -234,6 +234,13 @@ def index():
             supervisor_atendimento = request.form.get('supervisorAtendimento', '')
             current_time = datetime.now()
 
+            # --- CORREÇÃO AQUI ---
+            # Define o fuso horário de Mato Grosso do Sul
+            fuso_horario_ms = pytz.timezone('America/Campo_Grande')
+            # Pega a data e hora ATUAL neste fuso horário
+            current_time = datetime.now(fuso_horario_ms)
+            # --- FIM DA CORREÇÃO ---
+
             sql_update = """
                 UPDATE supervisores SET
                 supervisor_operacoes = %s,
