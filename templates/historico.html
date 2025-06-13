@@ -94,42 +94,48 @@
 {# Só executa o script se houver dados para o gráfico #}
 {% if chart_status_data.labels %}
 <script>
-    // Pega os dados que o Python enviou para o template
-    const statusData = {{ chart_status_data | tojson }};
+    // Espera o documento HTML inteiro ser carregado antes de executar o código
+    document.addEventListener('DOMContentLoaded', function () {
 
-    // Pega o elemento <canvas> que criamos no Passo 2
-    const ctxStatus = document.getElementById('graficoStatusPorMes').getContext('2d');
+        // Pega os dados que o Python enviou para o template
+        const statusData = {{ chart_status_data | tojson }};
 
-    // Cria o gráfico
-    new Chart(ctxStatus, {
-        type: 'bar', // Tipo do gráfico: 'bar' (barras), 'line' (linha), 'pie' (pizza), etc.
-        data: {
-            labels: statusData.labels, // Eixo X: os meses (ex: ['2025-05', '2025-06'])
-            datasets: statusData.datasets // As barras: cada status é um 'dataset' com sua cor e valores
-        },
-        options: {
-            responsive: true,
-            plugins: {
-              title: {
-                display: true,
-                text: 'Quantidade de Ocorrências por Status'
-              },
+        // Pega o elemento <canvas> que criamos mais acima na página
+        const ctxStatus = document.getElementById('graficoStatusPorMes').getContext('2d');
+
+        // Cria o gráfico usando a biblioteca Chart.js
+        new Chart(ctxStatus, {
+            type: 'bar', // Tipo de gráfico: barras
+            data: {
+                labels: statusData.labels, // Eixo X: os meses
+                datasets: statusData.datasets // As barras: cada status é um 'dataset'
             },
-            scales: {
-                x: {
-                    stacked: true, // Empilha as barras do mesmo mês para economizar espaço
+            options: {
+                responsive: true,
+                plugins: {
+                  title: {
+                    display: true,
+                    text: 'Quantidade de Ocorrências por Status'
+                  },
                 },
-                y: {
-                    stacked: true, // Habilita o empilhamento no eixo Y
-                    beginAtZero: true,
-                    ticks: {
-                       // Garante que o eixo Y só mostre números inteiros
-                       stepSize: 1 
+                scales: {
+                    x: {
+                        stacked: true, // Empilha as barras do mesmo mês
+                    },
+                    y: {
+                        stacked: true, // Habilita o empilhamento no eixo Y
+                        beginAtZero: true,
+                        ticks: {
+                           // Garante que o eixo Y só mostre números inteiros
+                           stepSize: 1 
+                        }
                     }
                 }
             }
-        }
+        });
+
     });
 </script>
 {% endif %}
+
 {% endblock %}
