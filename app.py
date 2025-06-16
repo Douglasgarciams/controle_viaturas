@@ -1005,7 +1005,7 @@ def exportar_historico_excel():
         output = BytesIO()
         nome_arquivo = f"historico_completo_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
         # Usando 'xlsxwriter' pode dar um resultado melhor no Excel
-        writer = pd.ExcelWriter(output, engine='xlsxwriter')
+        writer = pd.ExcelWriter(output, engine='openpyxl')
         df.to_excel(writer, index=False, sheet_name='Historico_Completo')
         writer.close() # Alterado de save() para close() que é mais comum
         
