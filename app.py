@@ -418,14 +418,29 @@ def exportar_relatorio_excel():
 
         # Converter a lista de dicionários em um DataFrame do pandas
         df = pd.DataFrame(ocorrencias)
-        # Lista das colunas que são do tipo TIME no banco
+# Lista das colunas que são do tipo TIME no banco
         colunas_de_horario = ['chegada_delegacia', 'entrega_ro', 'saida_delegacia']
+        
+        # Função auxiliar para formatar a 'duração de tempo' (timedelta) para o formato de hora
+        def formatar_timedelta_para_hora(td):
+            if pd.isnull(td):
+                return '' # Retorna um texto vazio se o dado for nulo
+            
+            # Converte a duração total em segundos
+            segundos_totais = int(td.total_seconds())
+            
+            # Calcula horas, minutos e segundos a partir do total de segundos
+            horas, resto = divmod(segundos_totais, 3600)
+            minutos, segundos = divmod(resto, 60)
+            
+            # Monta o texto no formato HH:MM:SS e adiciona a aspa na frente
+            # para forçar o Excel a tratar como texto puro
+            return f"'{horas:02}:{minutos:02}:{segundos:02}"
 
+        # Aplica a nossa nova função de formatação em cada coluna de horário
         for coluna in colunas_de_horario:
-            # Verifica se a coluna realmente existe no DataFrame
             if coluna in df.columns:
-                # NOVA LÓGICA: Adiciona uma aspa simples (') no início para forçar o Excel a tratar como texto
-                df[coluna] = df[coluna].apply(lambda x: f"'{str(x)}" if pd.notnull(x) else '')
+                df[coluna] = df[coluna].apply(formatar_timedelta_para_hora)
 
         # Definir o caminho para salvar o arquivo temporariamente
         output = BytesIO()
