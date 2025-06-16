@@ -968,6 +968,7 @@ def historico():
 
     # 📜 Rota para exportar o HISTÓRICO COMPLETO para Excel
 # 📜 Rota para exportar o HISTÓRICO COMPLETO para Excel
+# 📜 Rota para exportar o HISTÓRICO COMPLETO para Excel (com formatação de hora)
 @app.route('/exportar_historico_excel')
 def exportar_historico_excel():
     conn = None
@@ -984,9 +985,30 @@ def exportar_historico_excel():
             return redirect(url_for('historico'))
 
         df = pd.DataFrame(ocorrencias)
+        
+        # --- INÍCIO DO BLOCO DE CORREÇÃO DE HORÁRIO ---
+        colunas_de_horario = ['chegada_delegacia', 'entrega_ro', 'saida_delegacia']
+        
+        def formatar_timedelta_para_hora(td):
+            if pd.isnull(td):
+                return ''
+            segundos_totais = int(td.total_seconds())
+            horas, resto = divmod(segundos_totais, 3600)
+            minutos, segundos = divmod(resto, 60)
+            return f"'{horas:02}:{minutos:02}:{segundos:02}"
+
+        for coluna in colunas_de_horario:
+            if coluna in df.columns:
+                df[coluna] = df[coluna].apply(formatar_timedelta_para_hora)
+        # --- FIM DO BLOCO DE CORREÇÃO ---
+
         output = BytesIO()
         nome_arquivo = f"historico_completo_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
-        df.to_excel(output, index=False, sheet_name='Historico_Completo')
+        # Usando 'xlsxwriter' pode dar um resultado melhor no Excel
+        writer = pd.ExcelWriter(output, engine='xlsxwriter')
+        df.to_excel(writer, index=False, sheet_name='Historico_Completo')
+        writer.close() # Alterado de save() para close() que é mais comum
+        
         output.seek(0)
 
         return send_file(output,
