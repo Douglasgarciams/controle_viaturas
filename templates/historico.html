@@ -3,81 +3,110 @@
 {% block title %}Histórico de Ocorrências{% endblock %}
 
 {% block content %}
-<h2 class="mb-4 text-center">Histórico de Ocorrências</h2>
-<p class="text-center text-muted">Aqui estão todas as ocorrências que já foram limpas da tela principal.</p>
+<div class="container-fluid mt-4">
+    <h2 class="mb-4 text-center">Histórico de Ocorrências</h2>
+    <p class="text-center text-muted">Aqui estão todas as ocorrências que já foram limpas da tela principal.</p>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-        {% for category, message in messages %}
-            <div class="alert alert-{{ category }}">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
-{% endwith %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    
-    {# Botão para voltar para a tela principal #}
-    <a href="{{ url_for('gerenciar_ocorrencias') }}" class="btn btn-secondary">
-        &larr; Voltar para a Tela Principal
-    </a>
-    
-    {# Grupo de botões para as ações de exportar e zerar #}
-    <div>
-        {# PASSO 1: O botão que você já tem para exportar #}
-        <a href="{{ url_for('exportar_historico_excel') }}" class="btn btn-success">
-            <i class="fas fa-file-excel"></i> Passo 1: Exportar Histórico
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        
+        {# Botão para voltar para a tela principal #}
+        <a href="{{ url_for('gerenciar_ocorrencias') }}" class="btn btn-secondary">
+            &larr; Voltar para a Tela Principal
         </a>
         
-        {# PASSO 2: O novo botão para zerar o histórico #}
-        <form action="{{ url_for('zerar_historico_confirmado') }}" method="POST" class="d-inline" onsubmit="return confirm('ATENÇÃO!\n\nVocê confirma que já EXPORTOU O ARQUIVO EXCEL do histórico?\n\nEsta ação apagará PERMANENTEMENTE todos os registros desta tela.');">
-            <button type="submit" class="btn btn-danger">
+        {# Grupo de botões para as ações de exportar e zerar #}
+        <div>
+            {# PASSO 1: O botão que você já tem para exportar #}
+            <a href="{{ url_for('exportar_historico_excel') }}" class="btn btn-success">
+                <i class="fas fa-file-excel"></i> Passo 1: Exportar Histórico
+            </a>
+            
+            {# PASSO 2: O botão agora ABRE O MODAL em vez de submeter o formulário #}
+            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmarZerarModal">
                 <i class="fas fa-trash-alt"></i> Passo 2: Zerar Histórico
             </button>
-        </form>
+            </div>
     </div>
 
+    <div class="table-responsive shadow-sm rounded">
+        <table class="table table-striped table-hover">
+            <thead class="bg-secondary text-white">
+                <tr>
+                    <th>Data Registro</th>
+                    <th>Viatura</th>
+                    <th>Fato</th>
+                    <th>Status</th>
+                    <th>Protocolo</th>
+                    <th>R.O CADG</th>
+                    <th>Chegada</th>
+                    <th>Entrega R.O</th>
+                    <th>Saída</th>
+                    <th>Delegacia</th>
+                    <th>Total DP</th>
+                    <th>Entrega DP</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ocorrencia in ocorrencias %}
+                <tr>
+                    <td>{{ ocorrencia.data_registro.strftime('%d/%m/%Y %H:%M') if ocorrencia.data_registro else 'N/A' }}</td>
+                    <td>{{ ocorrencia.viatura_prefixo or 'N/D' }}</td>
+                    <td>{{ ocorrencia.fato }}</td>
+                    <td>{{ ocorrencia.status }}</td>
+                    <td>{{ ocorrencia.protocolo }}</td>
+                    <td>{{ ocorrencia.ro_cadg }}</td>
+                    <td>{{ ocorrencia.chegada_delegacia }}</td>
+                    <td>{{ ocorrencia.entrega_ro }}</td>
+                    <td>{{ ocorrencia.saida_delegacia }}</td>
+                    <td>{{ ocorrencia.delegacia or 'N/D' }}</td>
+                    <td>{{ ocorrencia.tempo_total_dp }}</td>
+                    <td>{{ ocorrencia.tempo_entrega_dp }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    {# O colspan agora precisa ser 12 para alinhar com o cabeçalho #}
+                    <td colspan="12" class="text-center text-muted">Nenhuma ocorrência no histórico ainda.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
-<div class="table-responsive shadow-sm rounded">
-    <table class="table table-striped table-hover">
-        <thead class="bg-secondary text-white">
-            <tr>
-                <th>Data Registro</th>
-                <th>Viatura</th>
-                <th>Fato</th>
-                <th>Status</th>
-                <th>Protocolo</th>
-                <th>R.O CADG</th>
-                <th>Chegada</th>
-                <th>Entrega R.O</th>
-                <th>Saída</th>
-                <th>Delegacia</th>
-                <th>Total DP</th>
-                <th>Entrega DP</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for ocorrencia in ocorrencias %}
-            <tr>
-                <td>{{ ocorrencia.data_registro.strftime('%d/%m/%Y %H:%M') if ocorrencia.data_registro else 'N/A' }}</td>
-                <td>{{ ocorrencia.viatura_prefixo or 'N/D' }}</td>
-                <td>{{ ocorrencia.fato }}</td>
-                <td>{{ ocorrencia.status }}</td>
-                <td>{{ ocorrencia.protocolo }}</td>
-                <td>{{ ocorrencia.ro_cadg }}</td>
-                <td>{{ ocorrencia.chegada_delegacia }}</td>
-                <td>{{ ocorrencia.entrega_ro }}</td>
-                <td>{{ ocorrencia.saida_delegacia }}</td>
-                <td>{{ ocorrencia.delegacia or 'N/D' }}</td>
-                <td>{{ ocorrencia.tempo_total_dp }}</td>
-                <td>{{ ocorrencia.tempo_entrega_dp }}</td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="10" class="text-center text-muted">Nenhuma ocorrência no histórico ainda.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div class="modal fade" id="confirmarZerarModal" tabindex="-1" aria-labelledby="confirmarZerarModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmarZerarModalLabel">Confirmação de Segurança</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('zerar_historico_confirmado') }}" method="post">
+                <div class="modal-body">
+                    <p class="text-danger fw-bold">Atenção! Esta ação é irreversível e irá apagar todos os dados do histórico de ocorrências.</p>
+                    <p>Para confirmar, por favor, digite a senha de administrador.</p>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Senha:</label>
+                        <input type="password" class="form-control" id="password" name="password" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger">Confirmar e Zerar Histórico</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
+
 {% endblock %}

@@ -244,3 +244,50 @@ button:disabled {
         display: none !important;
     }
 }
+/* ========================================= */
+/* === ESTILOS PARA IMPRESSÃO              === */
+/* ========================================= */
+@media print {
+
+    /* Esconde elementos que não queremos na impressão */
+    header, 
+    nav, 
+    footer, 
+    .btn, 
+    .alert,
+    .hide-for-print {
+        display: none !important;
+    }
+
+    /* Força o fundo a ser branco e o texto a ser preto para economizar tinta */
+    body, .card {
+        background: #ffffff !important;
+        color: #000000 !important;
+        box-shadow: none !important; /* Remove sombras */
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Garante que todo texto dentro do card fique preto */
+    .card-header, 
+    .card-body, 
+    .card-title, 
+    .text-muted, 
+    .text-white, 
+    h2, 
+    h3, 
+    p {
+        background-color: transparent !important;
+        color: #000000 !important;
+    }
+
+    /* Tenta evitar que um card seja cortado no meio da página */
+    .card {
+        page-break-inside: avoid;
+    }
+
+    /* Garante que os gráficos se ajustem bem na página impressa */
+    canvas {
+        max-width: 100% !important;
+        height: auto !important;
+    }
+}

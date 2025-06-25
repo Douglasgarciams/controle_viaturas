@@ -1,0 +1,210 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard de Estatísticas{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2 class="mb-4 text-center">Dashboard de Estatísticas</h2>
+    <p class="text-center text-muted">Análises visuais das ocorrências do histórico.</p>
+    <div class="text-center mb-4 hide-for-print">
+        <button onclick="window.print()" class="btn btn-secondary"><i class="bi bi-printer-fill"></i> Imprimir Dashboard</button>
+        <a href="{{ url_for('exportar_dashboard') }}" class="btn btn-success"><i class="bi bi-file-earmark-excel-fill"></i> Exportar Relatório Excel</a>
+    </div>
+    <hr class="hide-for-print">
+
+    <div class="row mb-4">
+        <div class="col-lg-4 col-md-6 mb-3">
+            <div class="card text-white bg-primary text-center h-100">
+                <div class="card-header">Total de Ocorrências Arquivadas</div>
+                <div class="card-body d-flex align-items-center justify-content-center">
+                    <h1 class="card-title display-4">{{ kpis.total_ocorrencias }}</h1>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 col-md-6 mb-3">
+            <div class="card text-white bg-success text-center h-100">
+                <div class="card-header">Delegacia Mais Acionada</div>
+                <div class="card-body d-flex align-items-center justify-content-center">
+                    <h3 class="card-title">{{ kpis.delegacia_top }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 col-md-12 mb-3">
+            <div class="card text-white bg-info text-center h-100">
+                <div class="card-header">Tempo Médio na DP</div>
+                <div class="card-body d-flex align-items-center justify-content-center">
+                    <h1 class="card-title">{{ kpis.media_tempo_dp }} <small class="h6">horas</small></h1>
+                </div>
+            </div>
+        </div>
+    </div>
+    <hr>
+    
+    <h3 class="mb-3 text-center">Análises Gerais do Período Completo</h3>
+    <div class="row">
+        <div class="col-lg-12 mb-4">
+            <div class="card h-100">
+                <div class="card-header">Ocorrências por Fato</div>
+                <div class="card-body">
+                    {% if dados_fatos_barras %}<canvas id="graficoFatos"></canvas>{% else %}<p class="text-center text-muted">Não há dados.</p>{% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-12 mb-4">
+            <div class="card h-100">
+                <div class="card-header">Ocorrências por Status</div>
+                <div class="card-body">
+                     {% if status_chart_data and status_chart_data.labels %}<canvas id="graficoStatus"></canvas>{% else %}<p class="text-center text-muted">Não há dados.</p>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <hr>
+
+    <h3 class="mb-3 text-center">Análises Mensais</h3>
+    <h5 class="mb-3 text-center text-muted">Top 3 Fatos por Mês</h5>
+    <div class="row">
+        {% if dados_mensais %}
+            {% for mes_data in dados_mensais %}
+                {% if mes_data.top3_fatos and mes_data.top3_fatos.labels %}
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header">Mês: {{ mes_data.mes }}</div>
+                        <div class="card-body"><canvas id="graficoTop3-{{ mes_data.mes }}"></canvas></div>
+                    </div>
+                </div>
+                {% endif %}
+            {% endfor %}
+        {% else %}
+            <div class="col-12"><p class="text-center text-muted">Não há dados para exibir o Top 3 mensal.</p></div>
+        {% endif %}
+    </div>
+
+    <hr>
+
+    <h5 class="mb-3 mt-4 text-center text-muted">Total de Horas por Delegacia (Mensal)</h5>
+    <div class="row">
+        {% if dados_mensais %}
+            {% for mes_data in dados_mensais %}
+                {% if mes_data.horas_delegacia and mes_data.horas_delegacia.labels %}
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header">Mês: {{ mes_data.mes }}</div>
+                        <div class="card-body"><canvas id="graficoHorasMensal-{{ mes_data.mes }}"></canvas></div>
+                    </div>
+                </div>
+                {% endif %}
+            {% endfor %}
+        {% else %}
+            <div class="col-12"><p class="text-center text-muted">Não há dados de tempo para exibir as horas por delegacia.</p></div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    Chart.register(ChartDataLabels);
+
+    // Gráfico 1: Barras Verticais de Fatos (com %)
+    {% if dados_fatos_barras %}
+        const fatosData = {{ dados_fatos_barras | tojson }};
+        const ctxFatos = document.getElementById('graficoFatos').getContext('2d');
+        new Chart(ctxFatos, {
+            type: 'bar',
+            data: {
+                labels: fatosData.map(item => item.fato),
+                datasets: [{
+                    label: 'Quantidade',
+                    data: fatosData.map(item => item.quantidade),
+                    backgroundColor: 'rgba(75, 192, 192, 0.7)'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    title: { display: true, text: 'Distribuição de Ocorrências por Fato (%)' },
+                    datalabels: {
+                        anchor: 'end', align: 'top', color: 'white', font: { weight: 'bold' },
+                        formatter: (value, ctx) => {
+                            const sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                            if (sum === 0) return '0%';
+                            return (value * 100 / sum).toFixed(1) + '%';
+                        }
+                    }
+                },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+        });
+    {% endif %}
+
+    // Gráfico 2: Barras Horizontais de Status
+    {% if status_chart_data and status_chart_data.labels %}
+        const statusData = {{ status_chart_data | tojson }};
+        const ctxStatus = document.getElementById('graficoStatus').getContext('2d');
+        new Chart(ctxStatus, {
+            type: 'bar',
+            data: {
+                labels: statusData.labels,
+                datasets: [{
+                    label: 'Quantidade',
+                    data: statusData.data,
+                    backgroundColor: 'rgba(153, 102, 255, 0.7)'
+                }]
+            },
+            options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false }, title: { display: true, text: 'Quantidade de Ocorrências por Status' }}}
+        });
+    {% endif %}
+
+    // Gráficos Mensais
+    {% for mes_data in dados_mensais %}
+        // Gráfico de Pizza: Top 3 Fatos do Mês
+        {% if mes_data.top3_fatos and mes_data.top3_fatos.labels and mes_data.top3_fatos.labels|length > 0 %}
+            const top3Data_{{ loop.index }} = {{ mes_data.top3_fatos | tojson }};
+            const ctxTop3_{{ loop.index }} = document.getElementById('graficoTop3-{{ mes_data.mes }}').getContext('2d');
+            new Chart(ctxTop3_{{ loop.index }}, {
+                type: 'pie',
+                data: { labels: top3Data_{{ loop.index }}.labels, datasets: [{ data: top3Data_{{ loop.index }}.data, hoverOffset: 4 }] },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' },
+                        title: { display: false },
+                        datalabels: {
+                            formatter: (value, ctx) => {
+                                let sum = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                if (sum === 0) return '0%';
+                                return (value * 100 / sum).toFixed(0) + '%';
+                            },
+                            color: '#fff', font: { weight: 'bold', size: 12 }
+                        }
+                    }
+                }
+            });
+        {% endif %}
+
+        // Gráfico de Pizza: Horas por Delegacia do Mês
+        {% if mes_data.horas_delegacia and mes_data.horas_delegacia.labels and mes_data.horas_delegacia.labels|length > 0 %}
+            const horasData_{{ loop.index }} = {{ mes_data.horas_delegacia | tojson }};
+            const ctxHoras_{{ loop.index }} = document.getElementById('graficoHorasMensal-{{ mes_data.mes }}').getContext('2d');
+            new Chart(ctxHoras_{{ loop.index }}, {
+                type: 'pie',
+                data: { labels: horasData_{{ loop.index }}.labels, datasets: [{ data: horasData_{{ loop.index }}.data, hoverOffset: 4 }] },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' },
+                        title: { display: true, text: 'Horas por DP' },
+                        datalabels: {
+                            formatter: (value) => { return value.toFixed(1) + 'h'; },
+                            color: '#fff', font: { weight: 'bold' }
+                        }
+                    }
+                }
+            });
+        {% endif %}
+    {% endfor %}
+});
+</script>
+{% endblock %}

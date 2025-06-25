@@ -1023,28 +1023,35 @@ def exportar_historico_excel():
         if cursor:
             cursor.close()
 
-            # 🔥 Rota para ZERAR PERMANENTEMENTE o histórico (usar após o backup)
+            # 🔥 Rota para ZERAR PERMANENTEMENTE o histórico (agora com verificação de senha)
 @app.route('/zerar_historico_confirmado', methods=['POST'])
 def zerar_historico_confirmado():
-    conn = None
-    cursor = None
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Apaga TODOS os registros da tabela de histórico
-        cursor.execute("DELETE FROM historico_ocorrencias")
-        
-        conn.commit()
-        flash('O histórico de ocorrências foi zerado com sucesso!', 'warning')
+    # Pega a senha enviada pelo formulário no modal
+    senha_digitada = request.form.get('password')
+    
+    # SENHA MESTRA - Troque 'sua_senha_secreta' por uma senha de sua escolha
+    # O ideal é guardar esta senha em suas variáveis de ambiente (os.environ.get('ADMIN_PASSWORD'))
+    SENHA_MESTRA = "copomadmin2025" 
 
-    except MySQLdb.Error as err:
-        if conn:
-            conn.rollback() 
-        flash(f'Erro no banco de dados ao zerar o histórico: {err}', 'danger')
-    finally:
-        if cursor:
-            cursor.close()
+    # Verifica se a senha digitada é a correta
+    if senha_digitada == SENHA_MESTRA:
+        conn = None
+        cursor = None
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            # Usar TRUNCATE é mais rápido para limpar tabelas grandes
+            cursor.execute("TRUNCATE TABLE historico_ocorrencias")
+            conn.commit()
+            flash('Histórico de ocorrências zerado com sucesso!', 'success')
+        except MySQLdb.Error as err:
+            flash(f"Erro ao limpar o histórico: {err}", "danger")
+        finally:
+            if cursor:
+                cursor.close()
+    else:
+        # Se a senha estiver incorreta
+        flash('Senha incorreta! A operação foi cancelada.', 'danger')
 
     return redirect(url_for('historico'))
 
@@ -1177,6 +1184,210 @@ def debug_status():
         if cursor:
             cursor.close()
 
+# Adicione este import no topo do seu app.py, junto com os outros
+import unicodedata
+
+@app.route('/dashboard')
+def dashboard():
+    conn = None
+    cursor = None
+    # Valores padrão
+    kpis = {'total_ocorrencias': 0, 'delegacia_top': 'N/D', 'media_tempo_dp': '00:00'}
+    dados_fatos_barras = []
+    dados_mensais = []
+    status_chart_data = {}
+    # A variável bar_chart_horas_data foi REMOVIDA
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+
+        cursor.execute("SELECT * FROM historico_ocorrencias")
+        historico_completo = cursor.fetchall()
+
+        if historico_completo:
+            df = pd.DataFrame(historico_completo)
+
+            # --- 1. LIMPEZA E AGRUPAMENTO GERAL ---
+            df['data_registro'] = pd.to_datetime(df['data_registro'])
+            df['fato'] = df['fato'].fillna('OUTROS').str.strip().str.upper()
+            df['delegacia'] = df['delegacia'].fillna('N/D').str.strip().str.upper()
+            df['status'] = df['status'].fillna('N/A').str.strip().str.upper()
+            delegacia_mapa = {'DEPAC CEPOL': 'CEPOL'}
+            df['delegacia'] = df['delegacia'].replace(delegacia_mapa)
+            
+            palavras_chave_fatos = [
+                'VIOLENCIA DOMESTICA', 'DIREÇÃO PERIGOSA', 'LESAO CORPORAL', 'HOMICIDIO', 
+                'ROUBO', 'FURTO', 'TRAFICO', 'EVASÃO', 'AMEAÇA'
+            ]
+            def agrupar_fato(fato_original):
+                for chave in palavras_chave_fatos:
+                    if chave in fato_original: return chave
+                return fato_original
+            df['fato_agrupado'] = df['fato'].apply(agrupar_fato)
+
+            # --- 2. CÁLCULOS PARA GRÁFICOS E KPIs ---
+            kpis['total_ocorrencias'] = len(df)
+            if not df['delegacia'].dropna().empty:
+                kpis['delegacia_top'] = df['delegacia'].mode().get(0, 'N/D')
+            
+            contagem_fatos_geral = df['fato_agrupado'].value_counts().reset_index()
+            contagem_fatos_geral.columns = ['fato', 'quantidade']
+            dados_fatos_barras = contagem_fatos_geral.to_dict('records')
+
+            contagem_status_geral = df['status'].value_counts()
+            status_chart_data = {'labels': contagem_status_geral.index.tolist(), 'data': [int(q) for q in contagem_status_geral.values.tolist()]}
+            
+            # Cálculo da média de tempo para o KPI
+            df_horas_total = df[df['tempo_total_dp'].notna()].copy()
+            def hhmm_para_minutos(valor):
+                if isinstance(valor, timedelta): return valor.total_seconds() / 60
+                if isinstance(valor, str) and ':' in valor:
+                    try:
+                        h, m = map(int, valor.split(':')[:2])
+                        return h * 60 + m
+                    except (ValueError, TypeError): return 0
+                return 0
+            df_horas_total['minutos_dp'] = df_horas_total['tempo_total_dp'].apply(hhmm_para_minutos)
+            if not df_horas_total.empty:
+                media_minutos_total = df_horas_total['minutos_dp'].mean()
+                if pd.notna(media_minutos_total):
+                    horas_media, minutos_media = divmod(int(media_minutos_total), 60)
+                    kpis['media_tempo_dp'] = f"{horas_media:02}:{minutos_media:02}"
+
+            # --- 3. LÓGICA PARA GRÁFICOS MENSAIS ---
+            df['mes'] = df['data_registro'].dt.to_period('M').astype(str)
+            meses_unicos = sorted(df['mes'].unique())
+            for mes in meses_unicos:
+                df_mes = df[df['mes'] == mes]
+                
+                # Top 3 Fatos do Mês
+                contagem_fatos_mes = df_mes['fato_agrupado'].value_counts().reset_index()
+                contagem_fatos_mes.columns = ['fato', 'quantidade']
+                if len(contagem_fatos_mes) > 3:
+                    top_3 = contagem_fatos_mes.head(3)
+                    outros_soma = contagem_fatos_mes.iloc[3:]['quantidade'].sum()
+                    labels_top3 = top_3['fato'].tolist() + ['OUTROS']
+                    data_top3 = [int(q) for q in top_3['quantidade'].tolist()] + [int(outros_soma)]
+                else:
+                    labels_top3 = contagem_fatos_mes['fato'].tolist()
+                    data_top3 = [int(q) for q in contagem_fatos_mes['quantidade'].tolist()]
+                
+                # Horas por Delegacia do Mês
+                df_horas_mes = df_mes[df_mes['tempo_total_dp'].notna()].copy()
+                df_horas_mes['minutos_dp'] = df_horas_mes['tempo_total_dp'].apply(hhmm_para_minutos)
+                horas_por_delegacia_mes = df_horas_mes.groupby('delegacia')['minutos_dp'].sum() / 60
+                horas_por_delegacia_mes = horas_por_delegacia_mes[horas_por_delegacia_mes > 0].round(1)
+                
+                dados_mensais.append({
+                    'mes': mes,
+                    'top3_fatos': {'labels': labels_top3, 'data': data_top3},
+                    'horas_delegacia': {'labels': horas_por_delegacia_mes.index.tolist(), 'data': [float(h) for h in horas_por_delegacia_mes.values.tolist()]}
+                })
+
+    except Exception as e:
+        print(f"ERRO NO DASHBOARD: {e}")
+        flash(f"Ocorreu um erro ao gerar as estatísticas: {e}", "danger")
+    finally:
+        if cursor:
+            cursor.close()
+
+    # A variável 'bar_chart_horas_data' foi removida do retorno
+    return render_template('dashboard.html', 
+                           kpis=kpis, 
+                           dados_fatos_barras=dados_fatos_barras,
+                           dados_mensais=dados_mensais,
+                           status_chart_data=status_chart_data)
+
+@app.route('/exportar_dashboard')
+def exportar_dashboard():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+
+        cursor.execute("SELECT * FROM historico_ocorrencias")
+        historico_completo = cursor.fetchall()
+
+        if not historico_completo:
+            flash('Não há dados no histórico para exportar.', 'info')
+            return redirect(url_for('dashboard'))
+
+        df = pd.DataFrame(historico_completo)
+        
+        # --- PREPARAÇÃO DOS DADOS PARA AS ABAS DE ESTATÍSTICAS ---
+        df_para_estatisticas = df.copy()
+        df_para_estatisticas['fato'] = df_para_estatisticas['fato'].fillna('OUTROS').str.strip().str.upper()
+        df_para_estatisticas['delegacia'] = df_para_estatisticas['delegacia'].fillna('N/D').str.strip().str.upper()
+        delegacia_mapa = {'DEPAC CEPOL': 'CEPOL'}
+        df_para_estatisticas['delegacia'] = df_para_estatisticas['delegacia'].replace(delegacia_mapa)
+        df_para_estatisticas['status'] = df_para_estatisticas['status'].fillna('N/A').str.strip().str.upper()
+        
+        palavras_chave_fatos = ['VIOLENCIA DOMESTICA', 'DIREÇÃO PERIGOSA', 'LESAO CORPORAL', 'HOMICIDIO', 'ROUBO', 'FURTO', 'TRAFICO', 'EVASÃO', 'AMEAÇA']
+        def agrupar_fato(fato_original):
+            for chave in palavras_chave_fatos:
+                if chave in fato_original: return chave
+            return fato_original
+        df_para_estatisticas['fato_agrupado'] = df_para_estatisticas['fato'].apply(agrupar_fato)
+
+        kpis_df = pd.DataFrame([
+            {'Indicador': 'Total de Ocorrências', 'Valor': len(df_para_estatisticas)},
+            {'Indicador': 'Delegacia Mais Acionada', 'Valor': df_para_estatisticas['delegacia'].mode().get(0, 'N/D') if not df_para_estatisticas['delegacia'].empty else 'N/D'}
+        ])
+        
+        contagem_fatos = df_para_estatisticas['fato_agrupado'].value_counts().reset_index()
+        contagem_fatos.columns = ['Fato', 'Quantidade']
+        
+        contagem_status = df_para_estatisticas['status'].value_counts().reset_index()
+        contagem_status.columns = ['Status', 'Quantidade']
+
+        # --- FIM DA PREPARAÇÃO DAS ESTATÍSTICAS ---
+
+
+        # ================================================================= #
+        # ▼▼▼ BLOCO DE CORREÇÃO DE HORÁRIO PARA A ABA DE DADOS BRUTOS ▼▼▼ #
+        # ================================================================= #
+        colunas_de_horario = ['chegada_delegacia', 'entrega_ro', 'saida_delegacia']
+        
+        def formatar_timedelta_para_hora(td):
+            if pd.isnull(td):
+                return '' 
+            segundos_totais = int(td.total_seconds())
+            horas, resto = divmod(segundos_totais, 3600)
+            minutos, segundos = divmod(resto, 60)
+            return f"'{horas:02}:{minutos:02}:{segundos:02}"
+
+        for coluna in colunas_de_horario:
+            if coluna in df.columns:
+                df[coluna] = df[coluna].apply(formatar_timedelta_para_hora)
+        # ================================================================= #
+        
+        # GERA O ARQUIVO EXCEL COM VÁRIAS ABAS
+        output = BytesIO()
+        writer = pd.ExcelWriter(output, engine='openpyxl')
+        
+        # Escreve cada DataFrame em uma aba diferente
+        kpis_df.to_excel(writer, sheet_name='Indicadores Chave', index=False)
+        contagem_fatos.to_excel(writer, sheet_name='Ocorrencias por Fato', index=False)
+        contagem_status.to_excel(writer, sheet_name='Ocorrencias por Status', index=False)
+        df.to_excel(writer, sheet_name='Dados Brutos Completos', index=False)
+
+        writer.close()
+        output.seek(0)
+        
+        nome_arquivo = f"dashboard_estatisticas_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+        return send_file(output,
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         as_attachment=True,
+                         download_name=nome_arquivo)
+
+    except Exception as e:
+        flash(f"Ocorreu um erro ao gerar o relatório Excel: {e}", "danger")
+        return redirect(url_for('dashboard'))
+    finally:
+        if cursor:
+            cursor.close()
 
 # ... (restante do seu app.py, incluindo app.run(debug=True)
 
