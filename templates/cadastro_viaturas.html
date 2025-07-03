@@ -104,27 +104,7 @@
         </form>
     </div>
 
-    <form method="get" class="mb-3">
-        <label for="unidade_id_filter" class="form-label">Filtrar por Unidade:</label>
-        <div class="input-group">
-            <select class="form-select" name="unidade_id" id="unidade_id_filter" onchange="this.form.submit()">
-                <option value="">Todas as Unidades</option>
-                {% for unidade in unidades %}
-                    <option value="{{ unidade.id }}" {% if unidade_filtro == unidade.id|string %}selected{% endif %}>
-                        {{ unidade.nome }}
-                    </option>
-                {% endfor %}
-            </select>
-            <button type="submit" class="btn btn-primary">Filtrar</button>
-        </div>
-
-        <select class="form-select mt-2" name="viatura_id">
-            {% for viatura in viaturas %}
-                <option value="{{ viatura.id }}">{{ viatura.prefixo }} - {{ viatura.unidade_nome }}</option>
-            {% endfor %}
-        </select>
-    </form>
-
+    
     <!-- Tabela de Viaturas -->
     <div class="card p-4 mb-5">
         <h4 class="mb-3">Viaturas Cadastradas</h4>
