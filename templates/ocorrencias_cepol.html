@@ -26,13 +26,27 @@
     </div>
     <div class="card-body collapse show" id="formNovaOcorrencia">
         <form method="POST" class="row g-3" id="formOcorrencia">
+            
             <div class="col-md-4">
                 <label for="viatura_prefixo" class="form-label">Viatura (Prefixo):</label>
                 <input type="text" class="form-control" id="viatura_prefixo" name="viatura_prefixo" placeholder="Ex: 10-3797">
             </div>
+            
             <div class="col-md-4">
                 <label for="fato" class="form-label">Fato:</label>
-                <input type="text" class="form-control" id="fato" name="fato">
+                <div class="input-group">
+                    <select class="form-select" id="fato" name="fato">
+                        <option value="">Selecione o Fato...</option>
+                        {# Loop que preenche a lista vinda do banco #}
+                        {% for item in lista_fatos_db %}
+                            <option value="{{ item.nome }}">{{ item.nome }}</option>
+                        {% endfor %}
+                        <option value="OUTROS">OUTROS (Se não houver na lista)</option>
+                    </select>
+                    <a href="{{ url_for('gerenciar_fatos') }}" class="btn btn-outline-secondary" title="Adicionar/Editar Crimes">
+                        <i class="bi bi-gear-fill"></i>
+                    </a>
+                </div>
             </div>
             <div class="col-md-4">
                 <label for="status" class="form-label">Status:</label>
@@ -43,30 +57,33 @@
                     <option value="ENTREGA">ENTREGA</option>
                 </select>
             </div>
+
             <div class="col-md-4">
                 <label for="protocolo" class="form-label">Protocolo:</label>
                 <input type="text" class="form-control" id="protocolo" name="protocolo">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <label for="ro_cadg" class="form-label">R.O CADG:</label>
                 <input type="text" class="form-control" id="ro_cadg" name="ro_cadg">
-            </div>
-            <div class="col-md-3">
-                <label for="chegada" class="form-label">Chegada (HH:MM):</label>
-                <input type="time" class="form-control" id="chegada" name="chegada">
-            </div>
-            <div class="col-md-3">
-                <label for="entrega_ro" class="form-label">Entrega R.O (HH:MM):</label>
-                <input type="time" class="form-control" id="entrega_ro" name="entrega_ro">
-            </div>
-            <div class="col-md-3">
-                <label for="saida" class="form-label">Saída (HH:MM):</label>
-                <input type="time" class="form-control" id="saida" name="saida">
             </div>
             <div class="col-md-4">
                 <label for="delegacia" class="form-label">Delegacia:</label>
                 <input type="text" class="form-control" id="delegacia" name="delegacia" placeholder="Digite o nome da delegacia">
             </div>
+
+            <div class="col-md-4">
+                <label for="chegada" class="form-label">Chegada (HH:MM):</label>
+                <input type="time" class="form-control" id="chegada" name="chegada">
+            </div>
+            <div class="col-md-4">
+                <label for="entrega_ro" class="form-label">Entrega R.O (HH:MM):</label>
+                <input type="time" class="form-control" id="entrega_ro" name="entrega_ro">
+            </div>
+            <div class="col-md-4">
+                <label for="saida" class="form-label">Saída (HH:MM):</label>
+                <input type="time" class="form-control" id="saida" name="saida">
+            </div>
+            
             <div class="col-md-6">
                 <label for="tempo_total_dp" class="form-label">Tempo Total DP:</label>
                 <input type="text" class="form-control" id="tempo_total_dp" name="tempo_total_dp" readonly>
@@ -75,6 +92,7 @@
                 <label for="tempo_entrega_dp" class="form-label">Tempo Entrega DP:</label>
                 <input type="text" class="form-control" id="tempo_entrega_dp" name="tempo_entrega_dp" readonly>
             </div>
+            
             <div class="col-12 mt-4 text-center">
                 <button type="submit" class="btn btn-success btn-lg">Registrar Ocorrência</button>
             </div>
@@ -82,7 +100,7 @@
     </div>
 </div>
 
-{# BOTÕES DE AÇÃO: IMPRIMIR, EXPORTAR E NOVO: LIMPAR TODAS AS OCORRÊNCIAS #}
+{# BOTÕES DE AÇÃO: IMPRIMIR, EXPORTAR E LIMPAR #}
 <div class="d-flex justify-content-between mb-3 hide-for-print">
     <div>
         <button class="btn btn-primary print-button" onclick="printSection('todas-ocorrencias')">Imprimir Todas as Ocorrências</button>
@@ -91,14 +109,13 @@
         <a href="{{ url_for('exportar_relatorio_excel') }}" class="btn btn-success btn-sm me-2">
             <i class="fas fa-file-excel"></i> Exportar para Excel
         </a>
-        {# BOTÃO PARA ABRIR O MODAL DE CONFIRMAÇÃO DE EXCLUSÃO EM MASSA #}
         <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#confirmDeleteAllModal">
             <i class="fas fa-trash"></i> Limpar Todas as Ocorrências
         </button>
     </div>
 </div>
 
-{# NOVO DIV QUE ENVOLVE O TÍTULO E A TABELA DE OCORRÊNCIAS #}
+{# TABELA DE OCORRÊNCIAS #}
 <div class="print-block" id="todas-ocorrencias">
     <h3 class="mb-3 text-center">Ocorrências Registradas</h3>
     <div class="table-responsive shadow-sm rounded">
@@ -124,7 +141,7 @@
             <tbody>
                 {% for ocorrencia in ocorrencias %}
                 <tr>
-                    <td>{{ ocorrencia.data_registro.strftime('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ ocorrencia.data_registro.strftime('%d/%m/%Y %H:%M') if ocorrencia.data_registro else 'N/A' }}</td>
                     <td>{{ ocorrencia.viatura_prefixo or 'N/D' }}</td>
                     <td>{{ ocorrencia.fato }}</td>
                     <td>{{ ocorrencia.status }}</td>
@@ -151,11 +168,11 @@
             </tbody>
         </table>
     </div>
-</div> {# FIM DO NOVO DIV QUE ENVOLVE TODAS AS OCORRÊNCIAS #}
+</div>
 
-{# MODAL DE CONFIRMAÇÃO PARA ARQUIVAR E LIMPAR TODAS AS OCORRÊNCIAS #}
+{# MODAL DE CONFIRMAÇÃO #}
 <div class="modal fade" id="confirmDeleteAllModal" tabindex="-1" aria-labelledby="confirmDeleteAllModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg"> {# Aumentei o tamanho do modal com modal-lg #}
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title" id="confirmDeleteAllModalLabel">Arquivar e Limpar Todas as Ocorrências</h5>

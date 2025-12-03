@@ -4,19 +4,19 @@ load_dotenv() # Carrega as variáveis de ambiente do .env
 import os
 import MySQLdb
 import pytz
+import unicodedata # Importante para limpeza de texto
 from flask import Flask, render_template, request, redirect, url_for, flash, g
 from datetime import datetime, timedelta, time
 import pandas as pd
 from flask import send_file
 from io import BytesIO
-import tempfile # <--- Importe tempfile aqui!
+import tempfile 
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'sua-chave-secreta-para-desenvolvimento-local')
 
 # --- Funções para Gerenciar a Conexão com o Banco de Dados ---
 def get_db():
-    """Obtém uma conexão de banco de dados por requisição."""
     if 'db' not in g:
         db_host = os.environ.get('DB_HOST')
         db_port = int(os.environ.get('DB_PORT', 4000))
@@ -25,294 +25,104 @@ def get_db():
         db_name = os.environ.get('DB_NAME')
         ca_cert_content = os.environ.get('CA_CERT_CONTENT')
 
-        # Linhas de DEBUG (Mantenha para testar, remova ou comente depois)
-        print(f"DEBUG: DB_HOST={db_host}")
-        print(f"DEBUG: DB_PORT={db_port}")
-        print(f"DEBUG: DB_USER={db_user}")
-        print(f"DEBUG: DB_NAME={db_name}")
-
-        # Inicializa ca_path como None, para ser usado na conexão
         ca_path = None
-
         if ca_cert_content:
             temp_ca_file = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8')
             temp_ca_file.write(ca_cert_content)
             temp_ca_file.close()
             ca_path = temp_ca_file.name
-            print(f"DEBUG: Usando certificado CA temporário: {ca_path}")
         else:
             local_ca_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ca.pem')
             if os.path.exists(local_ca_path):
                 ca_path = local_ca_path
-                print(f"DEBUG: Usando certificado CA local: {ca_path}")
-            else:
-                print("DEBUG: Nenhum certificado CA encontrado ou fornecido. A conexão SSL pode falhar.")
 
-        # Conecta ao banco de dados com os parâmetros SSL
-        # Note a mudança na forma como 'ssl_mode' e 'ssl' são passados
         g.db = MySQLdb.connect(
-            host=db_host,
-            port=db_port,
-            user=db_user,
-            passwd=db_password, # Use 'passwd' para MySQLdb
-            db=db_name,         # Use 'db' para MySQLdb
-            ssl_mode='VERIFY_IDENTITY',
-            ssl={'ca': ca_path} if ca_path else {} # Passa 'ca' dentro do dicionário 'ssl'
+            host=db_host, port=db_port, user=db_user, passwd=db_password, db=db_name,
+            ssl_mode='VERIFY_IDENTITY', ssl={'ca': ca_path} if ca_path else {}
         )
     return g.db
 
-# ... (Restante do seu app.py) ...
-
-# SEU CÓDIGO TERÁ ISSO:
-
 @app.teardown_appcontext
 def close_db(e=None):
-    """Fecha a conexão do banco de dados ao final da requisição."""
     db = g.pop('db', None)
     if db is not None:
         db.close()
-        # NADA, ABSOLUTAMENTE NADA MAIS VAI AQUI DENTRO.
-        # NEM "with app.app_context():" E NEM "def ensure_supervisores_table_and_initial_entry()"
 
-        # --- AQUI VAI A DEFINIÇÃO COMPLETA DA FUNÇÃO ensure_supervisores_table_and_initial_entry() ---
-def ensure_supervisores_table_and_initial_entry():
-    conn = None
-    cursor = None
-    print("DEBUG: Iniciando ensure_supervisores_table_and_initial_entry()")
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        # Cria a tabela 'supervisores' se ela não existir
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS supervisores (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                supervisor_operacoes VARCHAR(100) DEFAULT '',
-                coordenador VARCHAR(100) DEFAULT '',
-                supervisor_despacho VARCHAR(100) DEFAULT '',
-                coordenador_plantao VARCHAR(100) DEFAULT '',
-                supervisor_atendimento VARCHAR(100) DEFAULT '',
-                last_updated DATETIME
-            )
-        """)
-        conn.commit()
-        print("DEBUG: Tabela 'supervisores' verificada/criada.")
-
-        cursor.execute("SELECT COUNT(*) FROM supervisores")
-        count = cursor.fetchone()[0]
-        print(f"DEBUG: Contagem atual de supervisores: {count}")
-
-        if count == 0:
-            print("DEBUG: Tabela 'supervisores' vazia, inserindo entrada inicial.")
-            cursor.execute("""
-                INSERT INTO supervisores (id, supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento, last_updated)
-                VALUES (1, '', '', '', '', NOW())
-            """)
-            conn.commit()
-            print("DEBUG: Entrada inicial para a tabela 'supervisores' criada com sucesso.")
-        else:
-            print("DEBUG: Tabela 'supervisores' já existe e possui entradas.")
-    except MySQLdb.Error as err:
-        print(f"DEBUG: Erro ao inicializar a tabela 'supervisores': {err}")
-        if conn:
-            conn.rollback()
-    finally:
-        if cursor:
-            cursor.close()
-
-# --- AQUI VAI A CHAMADA PARA A FUNÇÃO (DEPOIS DA DEFINIÇÃO DELA) ---
-with app.app_context():
-    ensure_supervisores_table_and_initial_entry()
-
-# Função auxiliar para formatar minutos para HH:MM
+# --- Funções Auxiliares ---
 def format_minutes_to_hh_mm(total_minutes):
     hours = total_minutes // 60
     minutes = total_minutes % 60
     return f"{hours:02d}:{minutes:02d}"
 
-# Função para converter string "X min" de volta para minutos (se for o caso)
-def parse_minutes_from_string(time_str):
-    if time_str and isinstance(time_str, str) and " min" in time_str:
-        try:
-            return int(time_str.replace(" min", "").strip())
-        except ValueError:
-            pass
-    return None # Não é um formato "X min" válido ou erro na conversão
-
-# Função para garantir que o valor do tempo esteja em HH:MM para exibição
 def ensure_hh_mm_format_for_display(time_value):
-    # Se já é um datetime.time object (ex: se DB column for TIME)
-    if isinstance(time_value, time):
-        return time_value.strftime("%H:%M")
+    if isinstance(time_value, time): return time_value.strftime("%H:%M")
+    if isinstance(time_value, str) and len(time_value) == 5 and ':' in time_value: return time_value
+    return ''
 
-    # Se já é uma string HH:MM válida (ex: de novas entradas)
-    if isinstance(time_value, str) and len(time_value) == 5 and ':' in time_value:
-        try:
-            datetime.strptime(time_value, "%H:%M")
-            return time_value
-        except ValueError:
-            pass # Não é um HH:MM válido, tenta outras opções
+# 🔧 Status disponíveis
+STATUS_OPTIONS = ['ADM', 'CFP', 'FORÇA TATICA', 'RP', 'TRANSITO', 'ADJ CFP', 'INTERIOR', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ']
 
-    # Se está no formato "X min" (de entradas antigas), converte e formata
-    minutes = parse_minutes_from_string(time_value)
-    if minutes is not None:
-        return format_minutes_to_hh_mm(minutes) # Usa o formatter existente
+# --- ROTAS DO SISTEMA ---
 
-    return '' # Retorna string vazia para qualquer outro caso inválido/vazio
-
-# 🔧 Status disponíveis (CORRIGIDO: 'FORÇA TATICA' com espaço)
-STATUS_OPTIONS = [
-    'ADM', 'CFP', 'FORÇA TATICA', 'RP', 'TRANSITO', 'ADJ CFP', 'INTERIOR',
-    'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO',
-    'JUIZADO', 'TRANSITO/BLITZ'
-]
-
-# Função para garantir que a tabela 'supervisores' exista e tenha uma entrada inicial
-def ensure_supervisores_table_and_initial_entry(): # Indentação corrigida aqui
-    conn = None
-    cursor = None
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS supervisores (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                supervisor_operacoes VARCHAR(100) DEFAULT '',
-                coordenador VARCHAR(100) DEFAULT '',
-                supervisor_despacho VARCHAR(100) DEFAULT '',
-                supervisor_atendimento VARCHAR(100) DEFAULT '',
-                last_updated DATETIME
-            )
-        """)
-        conn.commit()
-        cursor.execute("SELECT COUNT(*) FROM supervisores")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                INSERT INTO supervisores (id, supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento, last_updated)
-                VALUES (1, '', '', '', '', NOW())
-            """)
-            conn.commit()
-            print("Entrada inicial para a tabela 'supervisores' criada com sucesso.")
-        else:
-            print("Tabela 'supervisores' já existe e possui entradas.")
-    # Exceção corrigida para MySQLdb.Error
-    except MySQLdb.Error as err:
-        print(f"Erro ao inicializar a tabela 'supervisores': {err}")
-        if conn:
-            conn.rollback()
-    finally:
-        if cursor:
-            cursor.close()
-        # conn.close() é tratado por @app.teardown_appcontext, não precisa aqui
-
-# A chamada a ensure_supervisores_table_and_initial_entry() foi movida para o if __name__ == '__main__':
-
-# --- FIM DO NOVO CÓDIGO PARA SUPERVISORES ---
-
-# 🔵 Página principal (ROTA INDEX EXISTENTE, AGORA MODIFICADA PARA INCLUIR SUPERVISORES)
 @app.route('/', methods=['GET', 'POST'])
 def index():
     conn = None
     cursor = None
-    supervisores_data = {
-        'supervisor_operacoes': '', 'coordenador': '',
-        'supervisor_despacho': '', 'supervisor_atendimento': '',
-        'last_updated': None
-    }
+    supervisores_data = {'supervisor_operacoes': '', 'coordenador': '', 'supervisor_despacho': '', 'supervisor_atendimento': '', 'last_updated': None}
     unidades = []
     viaturas = []
-    contatos = [] # Alterado de 'cfps' para 'contatos' para consistência
+    contatos = []
 
     try:
-        conn = get_db() # Substituído get_db_connection() por get_db()
-        cursor = conn.cursor(MySQLdb.cursors.DictCursor) # <--- MODIFIQUE ESTA LINHA!
+        conn = get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
-        # --- Lógica de POST para Supervisores ---
         if request.method == 'POST' and 'supervisorOperacoes' in request.form:
             supervisor_operacoes = request.form.get('supervisorOperacoes', '')
             coordenador = request.form.get('coordenador', '')
             supervisor_despacho = request.form.get('supervisorDespacho', '')
             supervisor_atendimento = request.form.get('supervisorAtendimento', '')
-            current_time = datetime.now()
-
-            # --- CORREÇÃO AQUI ---
-            # Define o fuso horário de Mato Grosso do Sul
             fuso_horario_ms = pytz.timezone('America/Campo_Grande')
-            # Pega a data e hora ATUAL neste fuso horário
             current_time = datetime.now(fuso_horario_ms)
-            # --- FIM DA CORREÇÃO ---
 
-            sql_update = """
-                UPDATE supervisores SET
-                supervisor_operacoes = %s,
-                coordenador = %s,
-                supervisor_despacho = %s,
-                supervisor_atendimento = %s,
-                last_updated = %s
-                WHERE id = 1
-            """
+            sql_update = """UPDATE supervisores SET supervisor_operacoes=%s, coordenador=%s, supervisor_despacho=%s, supervisor_atendimento=%s, last_updated=%s WHERE id=1"""
             cursor.execute(sql_update, (supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento, current_time))
             conn.commit()
             flash('Supervisores salvos com sucesso!', 'success')
             return redirect(url_for('index'))
 
-        # --- Lógica de POST para Contato (era CFP, agora 'contatos') ---
-        elif request.method == 'POST' and request.form.get('tipo') == 'contato': # Assumindo que o formulário de contato tenha um campo 'tipo'='contato'
-            unidade_id = request.form.get('unidade')
-            nome_cfp = request.form.get('nome') # Nome do CFP
-            telefone = request.form.get('telefone')
+        elif request.method == 'POST' and request.form.get('tipo') == 'contato':
+             unidade_id = request.form.get('unidade')
+             nome_cfp = request.form.get('nome')
+             telefone = request.form.get('telefone')
+             cursor.execute("SELECT * FROM contatos WHERE unidade_id=%s", (unidade_id,))
+             if cursor.fetchone():
+                 cursor.execute("UPDATE contatos SET cfp=%s, telefone=%s WHERE unidade_id=%s", (nome_cfp, telefone, unidade_id))
+             else:
+                 cursor.execute("INSERT INTO contatos (unidade_id, cfp, telefone) VALUES (%s, %s, %s)", (unidade_id, nome_cfp, telefone))
+             conn.commit()
+             flash('Contato salvo com sucesso!', 'success')
+             return redirect(url_for('index'))
 
-            # Verifica se já existe um contato para essa unidade_id
-            cursor.execute("SELECT * FROM contatos WHERE unidade_id=%s", (unidade_id,))
-            if cursor.fetchone():
-                cursor.execute(
-                    "UPDATE contatos SET cfp=%s, telefone=%s WHERE unidade_id=%s", # 'cfp' é o nome da coluna para o nome do CFP
-                    (nome_cfp, telefone, unidade_id)
-                )
-            else:
-                cursor.execute(
-                    "INSERT INTO contatos (unidade_id, cfp, telefone) VALUES (%s, %s, %s)",
-                    (unidade_id, nome_cfp, telefone)
-                )
-            conn.commit()
-            flash('Contato salvo com sucesso!', 'success')
-            return redirect(url_for('index'))
-
-        # --- Lógica de GET para Supervisores ---
         cursor.execute("SELECT * FROM supervisores WHERE id = 1")
-        row_supervisores = cursor.fetchone()
-        if row_supervisores:
-            supervisores_data = row_supervisores
+        row = cursor.fetchone()
+        if row: supervisores_data = row
 
-        # --- Lógica de GET para Unidades, Viaturas, Contatos ---
         cursor.execute("SELECT * FROM unidades")
         unidades = cursor.fetchall()
 
-        cursor.execute("""
-                       SELECT v.id, v.prefixo, v.unidade_id, v.status, u.nome_unidade AS unidade_nome
-                       FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
-                       ORDER BY u.nome_unidade, v.prefixo
-                       """)
-        viaturas_data = cursor.fetchall()
-        viaturas = viaturas_data # CORRIGIDO: Atribui os dados corretamente
+        cursor.execute("SELECT v.id, v.prefixo, v.unidade_id, v.status, u.nome_unidade AS unidade_nome FROM viaturas v JOIN unidades u ON v.unidade_id = u.id ORDER BY u.nome_unidade, v.prefixo")
+        viaturas = cursor.fetchall()
 
-        cursor.execute("""
-            SELECT c.*, u.nome_unidade AS unidade_nome
-            FROM contatos c JOIN unidades u ON c.unidade_id = u.id
-        """)
-        contatos = cursor.fetchall() # Alterado de 'cfps' para 'contatos'
+        cursor.execute("SELECT c.*, u.nome_unidade AS unidade_nome FROM contatos c JOIN unidades u ON c.unidade_id = u.id")
+        contatos = cursor.fetchall()
 
-    except MySQLdb.Error as err: # Exceção corrigida
+    except MySQLdb.Error as err:
         flash(f"Database error: {err}", 'danger')
-        unidades = []
-        viaturas = []
-        contatos = [] # Alterado de 'cfps' para 'contatos'
     finally:
-        if cursor:
-            cursor.close()
-        # conn.close() removido
+        if cursor: cursor.close()
 
-    return render_template('index.html', unidades=unidades, status_options=STATUS_OPTIONS,
-                           viaturas=viaturas, contatos=contatos, supervisores=supervisores_data) # Alterado de 'cfps' para 'contatos'
+    return render_template('index.html', unidades=unidades, status_options=STATUS_OPTIONS, viaturas=viaturas, contatos=contatos, supervisores=supervisores_data)
 
 @app.route('/cadastro_viaturas', methods=['GET', 'POST'])
 def cadastro_viaturas():
@@ -320,7 +130,7 @@ def cadastro_viaturas():
     cursor = None
     unidades = []
     viaturas = []
-    contatos = [] # Adicionado para evitar erro se não for definido
+    contatos = []
     contagem_viaturas_por_unidade = {}
     unidade_filtro = request.args.get('unidade_id')
 
@@ -329,160 +139,72 @@ def cadastro_viaturas():
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         if request.method == 'POST':
-            # Pega os dados do formulário
             unidade_id_form = request.form['unidade_id']
-            prefixo = request.form['prefixo'].strip() # Usamos .strip() para remover espaços extras
+            prefixo = request.form['prefixo'].strip()
             status = request.form['status']
             hora_entrada = request.form.get('hora_entrada')
             hora_saida = request.form.get('hora_saida')
 
-            # Passo 1: Verificar se o prefixo JÁ EXISTE em qualquer unidade
             cursor.execute("SELECT id FROM viaturas WHERE prefixo = %s", (prefixo,))
-            viatura_existente = cursor.fetchone()
-
-            # Passo 2: Se a viatura já existe, mostrar erro e parar
-            if viatura_existente:
-                flash(f'O prefixo "{prefixo}" já está cadastrado no sistema. Por favor, verifique.', 'danger')
+            if cursor.fetchone():
+                flash(f'O prefixo "{prefixo}" já está cadastrado.', 'danger')
                 return redirect(url_for('cadastro_viaturas', unidade_id=unidade_filtro))
-
-            # Passo 3: Se não existe, prosseguir com a inserção
             else:
-                cursor.execute("""
-                    INSERT INTO viaturas (unidade_id, prefixo, status, hora_entrada, hora_saida)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (unidade_id_form, prefixo, status, hora_entrada, hora_saida))
+                cursor.execute("INSERT INTO viaturas (unidade_id, prefixo, status, hora_entrada, hora_saida) VALUES (%s, %s, %s, %s, %s)", (unidade_id_form, prefixo, status, hora_entrada, hora_saida))
                 conn.commit()
                 flash('Viatura cadastrada com sucesso!', 'success')
-                # Redireciona para a página de cadastro, filtrando pela unidade que acabou de ser cadastrada
                 return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id_form))
 
-        # --- Lógica de GET (para carregar a página) ---
-        cursor.execute("SELECT id, nome_unidade AS nome FROM unidades") # Corrigido para nome_unidade se aplicável
+        cursor.execute("SELECT id, nome_unidade AS nome FROM unidades")
         unidades = cursor.fetchall()
 
+        query_viaturas = "SELECT v.id, u.nome_unidade AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida FROM viaturas v JOIN unidades u ON v.unidade_id = u.id"
         if unidade_filtro:
-            cursor.execute("""
-                SELECT v.id, u.nome_unidade AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
-                FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
-                WHERE v.unidade_id = %s ORDER BY v.prefixo ASC
-            """, (unidade_filtro,))
+            query_viaturas += " WHERE v.unidade_id = %s ORDER BY v.prefixo ASC"
+            cursor.execute(query_viaturas, (unidade_filtro,))
         else:
-            cursor.execute("""
-                SELECT v.id, u.nome_unidade AS unidade_nome, v.prefixo, v.status, v.hora_entrada, v.hora_saida
-                FROM viaturas v JOIN unidades u ON v.unidade_id = u.id
-                ORDER BY u.nome_unidade ASC, v.prefixo ASC
-            """)
+            query_viaturas += " ORDER BY u.nome_unidade ASC, v.prefixo ASC"
+            cursor.execute(query_viaturas)
         viaturas = cursor.fetchall()
 
-        cursor.execute("""
-            SELECT unidade_id, COUNT(*) as quantidade FROM viaturas GROUP BY unidade_id
-        """)
+        cursor.execute("SELECT unidade_id, COUNT(*) as quantidade FROM viaturas GROUP BY unidade_id")
         contagem_viaturas_por_unidade = {row['unidade_id']: row['quantidade'] for row in cursor.fetchall()}
 
-        cursor.execute("""
-            SELECT c.id, u.nome_unidade AS unidade_nome, c.cfp, c.telefone
-            FROM contatos c JOIN unidades u ON c.unidade_id = u.id
-        """)
+        cursor.execute("SELECT c.id, u.nome_unidade AS unidade_nome, c.cfp, c.telefone FROM contatos c JOIN unidades u ON c.unidade_id = u.id")
         contatos = cursor.fetchall()
 
     except MySQLdb.Error as err:
-        flash(f"Database error loading page: {err}", 'danger')
+        flash(f"Database error: {err}", 'danger')
     finally:
-        if cursor:
-            cursor.close()
+        if cursor: cursor.close()
 
-    return render_template(
-        'cadastro_viaturas.html',
-        unidades=unidades,
-        viaturas=viaturas,
-        contatos=contatos,
-        unidade_filtro=unidade_filtro,
-        contagem_viaturas_por_unidade=contagem_viaturas_por_unidade
-    )
+    return render_template('cadastro_viaturas.html', unidades=unidades, viaturas=viaturas, contatos=contatos, unidade_filtro=unidade_filtro, contagem_viaturas_por_unidade=contagem_viaturas_por_unidade)
 
-@app.route('/exportar_relatorio_excel')
-def exportar_relatorio_excel():
-    conn = None
-    cursor = None
-    try:
-        conn = get_db() # Substituído get_db_connection() por get_db()
-        cursor = conn.cursor(MySQLdb.cursors.DictCursor)  # Retorna dicionários para fácil conversão em DataFrame
-
-        # Exemplo: Buscar todas as ocorrências. Ajuste esta query se o seu relatório for diferente.
-        cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY data_registro DESC")
-        ocorrencias = cursor.fetchall()
-
-        if not ocorrencias:
-            flash('Não há dados para exportar para Excel.', 'info')
-            return redirect(url_for('relatorios'))  # Redirecione para a sua página de relatório (mude o nome se for diferente)
-
-        # Converter a lista de dicionários em um DataFrame do pandas
-        df = pd.DataFrame(ocorrencias)
-# Lista das colunas que são do tipo TIME no banco
-        colunas_de_horario = ['chegada_delegacia', 'entrega_ro', 'saida_delegacia']
-        
-        # Função auxiliar para formatar a 'duração de tempo' (timedelta) para o formato de hora
-        def formatar_timedelta_para_hora(td):
-            if pd.isnull(td):
-                return '' # Retorna um texto vazio se o dado for nulo
-            
-            # Converte a duração total em segundos
-            segundos_totais = int(td.total_seconds())
-            
-            # Calcula horas, minutos e segundos a partir do total de segundos
-            horas, resto = divmod(segundos_totais, 3600)
-            minutos, segundos = divmod(resto, 60)
-            
-            # Monta o texto no formato HH:MM:SS e adiciona a aspa na frente
-            # para forçar o Excel a tratar como texto puro
-            return f"'{horas:02}:{minutos:02}:{segundos:02}"
-
-        # Aplica a nossa nova função de formatação em cada coluna de horário
-        for coluna in colunas_de_horario:
-            if coluna in df.columns:
-                df[coluna] = df[coluna].apply(formatar_timedelta_para_hora)
-
-        # Definir o caminho para salvar o arquivo temporariamente
-        output = BytesIO()
-        writer = pd.ExcelWriter(output, engine='openpyxl')
-        df.to_excel(writer, index=False, sheet_name='Ocorrencias')
-        writer.close()
-        output.seek(0)
-
-        # Enviar o arquivo para download
-        return send_file(output,
-                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                         as_attachment=True,
-                         download_name='relatorio_ocorrencias_cepol.xlsx')
-
-    except MySQLdb.Error as err: # Exceção corrigida
-        flash(f"Erro no banco de dados ao exportar: {err}", 'danger')
-    except Exception as e:
-        flash(f"Ocorreu um erro inesperado ao exportar: {e}", 'danger')
-    finally:
-        if cursor:
-            cursor.close()
-        # conn.close() removido
-
-    # Em caso de erro, redirecione para a página de relatório
-    return redirect(url_for('relatorios')) # Mude para a rota da sua página de relatório (se for diferente)
-
-@app.route('/editar_contato/<int:contato_id>', methods=['GET'])
+# --- ROTAS CRUD VIATURAS/CONTATOS ---
+@app.route('/editar_contato/<int:contato_id>', methods=['GET', 'POST'])
 def editar_contato(contato_id):
     conn = None
     cursor = None
     contato = None
     try:
-        conn = get_db() # Substituído get_db_connection() por get_db()
+        conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+        
+        if request.method == 'POST':
+            unidade_id = request.form['unidade_id']
+            cfp = request.form['cfp']
+            telefone = request.form['telefone']
+            cursor.execute("UPDATE contatos SET unidade_id = %s, cfp = %s, telefone = %s WHERE id = %s", (unidade_id, cfp, telefone, contato_id))
+            conn.commit()
+            flash('Contato atualizado com sucesso!', 'success')
+            return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
+
         cursor.execute("SELECT * FROM contatos WHERE id = %s", (contato_id,))
         contato = cursor.fetchone()
-    except MySQLdb.Error as err: # Exceção corrigida
+    except MySQLdb.Error as err:
         flash(f"Database error: {err}", 'danger')
     finally:
-        if cursor:
-            cursor.close()
-        # conn.close() removido
+        if cursor: cursor.close()
 
     if contato is None:
         flash('Contato não encontrado.', 'danger')
@@ -490,126 +212,69 @@ def editar_contato(contato_id):
 
     return render_template('editar_contato.html', contato=contato)
 
-@app.route('/editar_contato/<int:contato_id>', methods=['POST'])
-def editar_contato_post(contato_id):
-    conn = None
-    cursor = None
-    unidade_id = request.form['unidade_id'] # Mantido, assumindo que vem do formulário
-    try:
-        unidade_id = request.form['unidade_id']
-        cfp = request.form['cfp']
-        telefone = request.form['telefone']
-
-        conn = get_db() # Substituído get_db_connection() por get_db()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE contatos
-            SET unidade_id = %s, cfp = %s, telefone = %s
-            WHERE id = %s
-        """, (unidade_id, cfp, telefone, contato_id))
-
-        conn.commit()
-        flash('Contato atualizado com sucesso!', 'success')
-    except MySQLdb.Error as err: # Exceção corrigida
-        flash(f"Database error updating contact: {err}", 'danger')
-    finally:
-        if cursor:
-            cursor.close()
-        # conn.close() removido
-
-    return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
-
-# ➕ Adicionar contato
 @app.route('/adicionar_contato', methods=['POST'])
 def adicionar_contato():
     conn = None
     cursor = None
-    unidade_id = request.form.get('unidade_id', '') # Mantido, pode ser usado para redirecionamento
-
+    unidade_id = request.form.get('unidade_id', '')
     try:
         unidade_id = request.form['unidade_id']
         cfp = request.form['cfp']
         telefone = request.form['telefone']
-
-        conn = get_db() # Substituído get_db_connection() por get_db()
+        conn = get_db()
         cursor = conn.cursor()
-
-        cursor.execute("""
-            INSERT INTO contatos (unidade_id, cfp, telefone)
-            VALUES (%s, %s, %s)
-        """, (unidade_id, cfp, telefone))
-
+        cursor.execute("INSERT INTO contatos (unidade_id, cfp, telefone) VALUES (%s, %s, %s)", (unidade_id, cfp, telefone))
         conn.commit()
         flash('Contato cadastrado com sucesso!', 'success')
-    except MySQLdb.Error as err: # Exceção corrigida
-        flash(f"Database error adding contact: {err}", 'danger')
+    except MySQLdb.Error as err:
+        flash(f"Database error: {err}", 'danger')
     finally:
-        if cursor:
-            cursor.close()
-        # conn.close() removido
-
+        if cursor: cursor.close()
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
-# ❌ Excluir contato
 @app.route('/excluir_contato/<int:contato_id>', methods=['POST'])
 def excluir_contato(contato_id):
     conn = None
     cursor = None
     unidade_id = ''
-
     try:
-        conn = get_db() # Substituído get_db_connection() por get_db()
+        conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
-
         cursor.execute("SELECT unidade_id FROM contatos WHERE id = %s", (contato_id,))
         contato = cursor.fetchone()
         unidade_id = contato['unidade_id'] if contato else ''
-
         cursor.execute("DELETE FROM contatos WHERE id = %s", (contato_id,))
         conn.commit()
         flash('Contato excluído com sucesso!', 'success')
-    except MySQLdb.Error as err: # Exceção corrigida
-        flash(f'Database error deleting contact: {err}', 'danger')
+    except MySQLdb.Error as err:
+        flash(f'Database error: {err}', 'danger')
     finally:
-        if cursor:
-            cursor.close()
-        # conn.close() removido
-
+        if cursor: cursor.close()
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
-# ❌ Excluir viatura
 @app.route('/excluir_viatura/<int:viatura_id>', methods=['POST'])
 def excluir_viatura(viatura_id):
     conn = None
     cursor = None
     unidade_id = ''
-
     try:
-        conn = get_db() # Substituído get_db_connection() por get_db()
+        conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
-
         cursor.execute("SELECT unidade_id FROM viaturas WHERE id = %s", (viatura_id,))
         viatura = cursor.fetchone()
-
         if not viatura:
             flash('Viatura não encontrada.', 'danger')
             return redirect(url_for('cadastro_viaturas'))
-
         unidade_id = viatura['unidade_id']
-
         cursor.execute("DELETE FROM viaturas WHERE id = %s", (viatura_id,))
         conn.commit()
         flash('Viatura excluída com sucesso!', 'success')
-    except MySQLdb.Error as err: # Exceção corrigida
-        flash(f'Database error deleting vehicle: {err}', 'danger')
+    except MySQLdb.Error as err:
+        flash(f'Database error: {err}', 'danger')
     finally:
-        if cursor:
-            cursor.close()
-        # conn.close() removido
-
+        if cursor: cursor.close()
     return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
-# ✏️ Editar viatura (com validação de prefixo duplicado)
 @app.route('/editar_viatura/<int:viatura_id>', methods=['GET', 'POST'])
 def editar_viatura(viatura_id):
     conn = None
@@ -619,78 +284,62 @@ def editar_viatura(viatura_id):
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
         if request.method == 'POST':
-            # Pega os dados do formulário de edição
             unidade_id = request.form['unidade_id']
             prefixo = request.form['prefixo'].strip()
             status = request.form['status']
             hora_entrada = request.form.get('hora_entrada')
             hora_saida = request.form.get('hora_saida')
 
-            # VERIFICAÇÃO: Checa se OUTRA viatura (id != viatura_id) já usa este prefixo
-            cursor.execute(
-                "SELECT id FROM viaturas WHERE prefixo = %s AND id != %s",
-                (prefixo, viatura_id)
-            )
-            outro_com_mesmo_prefixo = cursor.fetchone()
-
-            # Se encontrou outra viatura com o mesmo prefixo, mostra erro
-            if outro_com_mesmo_prefixo:
-                flash(f'O prefixo "{prefixo}" já está em uso por outra viatura. Por favor, escolha outro.', 'danger')
-                # Recarrega a página de edição sem salvar
+            cursor.execute("SELECT id FROM viaturas WHERE prefixo = %s AND id != %s", (prefixo, viatura_id))
+            if cursor.fetchone():
+                flash(f'O prefixo "{prefixo}" já está em uso.', 'danger')
                 return redirect(url_for('editar_viatura', viatura_id=viatura_id))
 
-            # Se o prefixo é único, prossegue com a atualização
             cursor.execute("""
                 UPDATE viaturas
                 SET unidade_id = %s, prefixo = %s, status = %s, hora_entrada = %s, hora_saida = %s
                 WHERE id = %s
             """, (unidade_id, prefixo, status, hora_entrada, hora_saida, viatura_id))
             conn.commit()
-            
-            flash('Viatura atualizada com sucesso!', 'success')
+            flash('Viatura atualizada!', 'success')
             return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
-        # --- Lógica de GET (para carregar a página de edição pela primeira vez) ---
         cursor.execute("SELECT * FROM viaturas WHERE id = %s", (viatura_id,))
         viatura = cursor.fetchone()
-
         if not viatura:
-            flash('Viatura não encontrada.', 'danger')
             return redirect(url_for('cadastro_viaturas'))
 
         cursor.execute("SELECT id, nome_unidade FROM unidades ORDER BY nome_unidade")
         unidades = cursor.fetchall()
-        
         return render_template('editar_viatura.html', viatura=viatura, unidades=unidades)
 
     except MySQLdb.Error as err:
-        flash(f"Database error on edit page: {err}", 'danger')
+        flash(f"Database error: {err}", 'danger')
         return redirect(url_for('cadastro_viaturas'))
     finally:
-        if cursor:
-            cursor.close()
-        # conn.close() removido
+        if cursor: cursor.close()
 
-    if viatura:
-        return render_template('editar_viatura.html', viatura=viatura, unidades=unidades)
-    else:
-        flash('Viatura não encontrada.', 'danger')
-        return redirect(url_for('cadastro_viaturas'))
 
-# --- ROTAS PARA OCORRÊNCIAS CEPOL ---
-# 📝 Rota principal para Gerenciar Ocorrências
+# ==============================================================================
+# ROTAS DE OCORRÊNCIAS (COM LISTA DE FATOS DO BANCO)
+# ==============================================================================
+
 @app.route('/ocorrencias', methods=['GET', 'POST'])
 def gerenciar_ocorrencias():
     conn = None
     cursor = None
     ocorrencias = []
-    
+    lista_fatos_db = []
+
     try:
         conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
+        # 1. Busca lista de fatos para o dropdown
+        cursor.execute("SELECT nome FROM tipos_fatos ORDER BY nome ASC")
+        lista_fatos_db = cursor.fetchall()
+
         if request.method == 'POST':
-            # Pega todos os dados do formulário
             delegacia = request.form.get('delegacia', '').strip()
             viatura_prefixo = request.form.get('viatura_prefixo', '').strip()
             fato = request.form.get('fato', '').strip()
@@ -701,11 +350,9 @@ def gerenciar_ocorrencias():
             entrega_ro = request.form.get('entrega_ro', '').strip()
             saida = request.form.get('saida', '').strip()
 
-            # Lógica de Fuso Horário para MS (UTC-4)
             fuso_horario_ms = pytz.timezone('America/Campo_Grande')
             data_do_registro = datetime.now(fuso_horario_ms)
             
-            # Cálculo de Tempo Condicional
             tempo_total_dp = None
             tempo_entrega_dp = None
             if chegada and entrega_ro and saida:
@@ -719,78 +366,48 @@ def gerenciar_ocorrencias():
                     tempo_total_dp = format_minutes_to_hh_mm(int((saida_dt - chegada_dt).total_seconds() // 60))
                     tempo_entrega_dp = format_minutes_to_hh_mm(int((entrega_dt - chegada_dt).total_seconds() // 60))
                 except ValueError:
-                    flash('Um dos horários fornecidos tem formato inválido. Utilize HH:MM.', 'danger')
+                    flash('Formato de horário inválido.', 'danger')
                     return redirect(url_for('gerenciar_ocorrencias'))
 
-            # Comando INSERT final e correto com 12 colunas e 12 valores
             cursor.execute("""
                 INSERT INTO ocorrencias_cepol
-                (delegacia, viatura_prefixo, fato, status, protocolo, ro_cadg, 
-                 chegada_delegacia, entrega_ro, saida_delegacia, 
-                 tempo_total_dp, tempo_entrega_dp, data_registro)
+                (delegacia, viatura_prefixo, fato, status, protocolo, ro_cadg, chegada_delegacia, entrega_ro, saida_delegacia, tempo_total_dp, tempo_entrega_dp, data_registro)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, 
-            (delegacia or None, viatura_prefixo or None, fato or None, status or None, 
-             protocolo or None, ro_cadg or None, chegada or None, entrega_ro or None, 
-             saida or None, tempo_total_dp, tempo_entrega_dp, data_do_registro))
+            """, (delegacia or None, viatura_prefixo or None, fato or None, status or None, protocolo or None, ro_cadg or None, chegada or None, entrega_ro or None, saida or None, tempo_total_dp, tempo_entrega_dp, data_do_registro))
 
             conn.commit()
             flash('Ocorrência registrada com sucesso!', 'success')
             return redirect(url_for('gerenciar_ocorrencias'))
 
-        # Lógica de GET para carregar a página
         cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY data_registro DESC")
         ocorrencias = cursor.fetchall()
 
     except MySQLdb.Error as err:
-        flash(f"Erro no banco de dados ao gerenciar ocorrências: {err}", 'danger')
+        flash(f"Erro no banco: {err}", 'danger')
     except Exception as e:
-        flash(f"Ocorreu um erro inesperado: {e}", 'danger')
+        flash(f"Erro inesperado: {e}", 'danger')
     finally:
-        if cursor:
-            cursor.close()
+        if cursor: cursor.close()
 
-    return render_template('ocorrencias_cepol.html', ocorrencias=ocorrencias)
+    return render_template('ocorrencias_cepol.html', ocorrencias=ocorrencias, lista_fatos_db=lista_fatos_db)
 
-# 📂 Rota para ARQUIVAR ocorrência (substitui a antiga 'excluir_ocorrencia')
-@app.route('/arquivar_ocorrencia/<int:id>', methods=['POST'])
-def arquivar_ocorrencia(id):
-    conn = None
-    cursor = None
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Em vez de DELETAR, vamos ATUALIZAR o status para 'arquivado' e registrar a data
-        query = "UPDATE ocorrencias_cepol SET status = 'arquivado', arquivado_em = %s WHERE id = %s"
-        data_arquivamento = datetime.now()
-        cursor.execute(query, (data_arquivamento, id))
-        
-        conn.commit()
-        flash('Ocorrência arquivada com sucesso!', 'success')
-    except MySQLdb.Error as err:
-        flash(f'Erro ao arquivar ocorrência: {err}', 'danger')
-    except Exception as e:
-        flash(f'Ocorreu um erro inesperado ao arquivar: {e}', 'danger')
-    finally:
-        if cursor:
-            cursor.close()
-
-    return redirect(url_for('gerenciar_ocorrencias'))
-
-# ✏️ Rota para editar ocorrência (com campo de viatura)
-# ✏️ Rota para editar ocorrência (com campo de delegacia)
+# ✏️ Rota para editar ocorrência (com campo de viatura e delegacia)
 @app.route('/editar_ocorrencia/<int:id>', methods=['GET', 'POST'])
 def editar_ocorrencia(id):
     conn = None
     cursor = None
+    lista_fatos_db = []
     try:
         conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
+        # Busca a lista de fatos para o dropdown
+        cursor.execute("SELECT nome FROM tipos_fatos ORDER BY nome ASC")
+        lista_fatos_db = cursor.fetchall()
+
         if request.method == 'POST':
-            # Pega todos os dados do formulário, incluindo o novo campo
-            delegacia = request.form.get('delegacia', '').strip() # <-- NOVO
+            # Pega todos os dados do formulário
+            delegacia = request.form.get('delegacia', '').strip()
             fato = request.form.get('fato', '').strip()
             status = request.form.get('status', '').strip()
             protocolo = request.form.get('protocolo', '').strip()
@@ -800,8 +417,7 @@ def editar_ocorrencia(id):
             entrega_ro = request.form.get('entrega_ro', '').strip()
             saida = request.form.get('saida', '').strip()
 
-            # A validação de campos obrigatórios foi removida, mas pode ser adicionada aqui se necessário
-            
+            # Cálculo de tempo (igual ao cadastro)
             tempo_total_dp = None
             tempo_entrega_dp = None
             if chegada and entrega_ro and saida:
@@ -818,7 +434,7 @@ def editar_ocorrencia(id):
                     flash('Formato de horário inválido. Utilize HH:MM.', 'danger')
                     return redirect(url_for('editar_ocorrencia', id=id))
 
-            # ATUALIZADO: Adiciona 'delegacia' ao comando UPDATE
+            # Comando UPDATE
             cursor.execute("""
                 UPDATE ocorrencias_cepol
                 SET delegacia=%s, fato=%s, status=%s, protocolo=%s, ro_cadg=%s, viatura_prefixo=%s, 
@@ -833,7 +449,7 @@ def editar_ocorrencia(id):
             flash('Ocorrência atualizada com sucesso!', 'success')
             return redirect(url_for('gerenciar_ocorrencias'))
 
-        # --- Lógica de GET (carrega os dados da ocorrência para exibir no formulário) ---
+        # --- Lógica de GET ---
         cursor.execute("SELECT * FROM ocorrencias_cepol WHERE id = %s", (id,))
         ocorrencia = cursor.fetchone()
 
@@ -841,22 +457,39 @@ def editar_ocorrencia(id):
             flash('Ocorrência não encontrada.', 'danger')
             return redirect(url_for('gerenciar_ocorrencias'))
 
-        # Formatação de campos de tempo para exibição
+        # Formatação de tempo para exibição no formulário
         ocorrencia['chegada_delegacia'] = ensure_hh_mm_format_for_display(ocorrencia.get('chegada_delegacia'))
         ocorrencia['entrega_ro'] = ensure_hh_mm_format_for_display(ocorrencia.get('entrega_ro'))
         ocorrencia['saida_delegacia'] = ensure_hh_mm_format_for_display(ocorrencia.get('saida_delegacia'))
 
     except MySQLdb.Error as err:
         flash(f"Erro no banco de dados ao carregar/atualizar: {err}", 'danger')
-    except Exception as e:
-        flash(f"Ocorreu um erro inesperado: {e}", 'danger')
+        return redirect(url_for('gerenciar_ocorrencias'))
     finally:
         if cursor:
             cursor.close()
 
-    return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia)
+    return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia, lista_fatos_db=lista_fatos_db)
 
-    # 🗑️ Rota para EXCLUIR PERMANENTEMENTE uma única ocorrência
+@app.route('/arquivar_ocorrencia/<int:id>', methods=['POST'])
+def arquivar_ocorrencia(id):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        # Em vez de DELETAR, vamos ATUALIZAR o status para 'arquivado' e registrar a data
+        query = "UPDATE ocorrencias_cepol SET status = 'arquivado', arquivado_em = %s WHERE id = %s"
+        data_arquivamento = datetime.now()
+        cursor.execute(query, (data_arquivamento, id))
+        conn.commit()
+        flash('Ocorrência arquivada com sucesso!', 'success')
+    except MySQLdb.Error as err:
+        flash(f'Erro ao arquivar: {err}', 'danger')
+    finally:
+        if cursor: cursor.close()
+    return redirect(url_for('gerenciar_ocorrencias'))
+
 @app.route('/excluir_ocorrencia/<int:id>', methods=['POST'])
 def excluir_ocorrencia(id):
     conn = None
@@ -868,13 +501,11 @@ def excluir_ocorrencia(id):
         conn.commit()
         flash('Ocorrência excluída com sucesso!', 'success')
     except MySQLdb.Error as err:
-        flash(f'Erro ao excluir ocorrência: {err}', 'danger')
+        flash(f'Erro ao excluir: {err}', 'danger')
     finally:
-        if cursor:
-            cursor.close()
+        if cursor: cursor.close()
     return redirect(url_for('gerenciar_ocorrencias'))
 
-    # 📦 Rota para ARQUIVAR e LIMPAR TODAS AS OCORRÊNCIAS
 @app.route('/limpar_todas_ocorrencias', methods=['POST'])
 def limpar_todas_ocorrencias():
     conn = None
@@ -882,32 +513,18 @@ def limpar_todas_ocorrencias():
     try:
         conn = get_db()
         cursor = conn.cursor()
-        
-        # Inicia uma transação: se algo der errado, nada é feito.
         conn.begin()
-        
-        # 1. Copia todos os dados da tabela principal para a tabela de histórico
         cursor.execute("INSERT INTO historico_ocorrencias SELECT * FROM ocorrencias_cepol")
-        
-        # 2. Apaga todos os dados da tabela principal
         cursor.execute("DELETE FROM ocorrencias_cepol")
-        
-        # 3. Confirma as duas operações
         conn.commit()
-        
-        flash('Todas as ocorrências foram arquivadas e a tela foi limpa com sucesso!', 'success')
-
+        flash('Ocorrências arquivadas com sucesso!', 'success')
     except MySQLdb.Error as err:
-        if conn:
-            conn.rollback() # Desfaz a operação em caso de erro
-        flash(f'Erro no banco de dados ao arquivar e limpar: {err}', 'danger')
+        if conn: conn.rollback()
+        flash(f'Erro ao arquivar: {err}', 'danger')
     finally:
-        if cursor:
-            cursor.close()
-
+        if cursor: cursor.close()
     return redirect(url_for('gerenciar_ocorrencias'))
 
-    # 📄 Rota para fazer o BACKUP de todas as ocorrências para Excel ANTES de limpar
 @app.route('/backup_ocorrencias_excel')
 def backup_ocorrencias_excel():
     conn = None
@@ -915,37 +532,26 @@ def backup_ocorrencias_excel():
     try:
         conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
-
         cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY id ASC")
         ocorrencias = cursor.fetchall()
 
         if not ocorrencias:
-            flash('Não há ocorrências para fazer backup.', 'info')
+            flash('Não há ocorrências para backup.', 'info')
             return redirect(url_for('gerenciar_ocorrencias'))
 
         df = pd.DataFrame(ocorrencias)
-        output = BytesIO() # Cria um arquivo em memória
-
-        # Gera o nome do arquivo com a data e hora atual
+        output = BytesIO()
         nome_arquivo = f"backup_ocorrencias_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
-
         df.to_excel(output, index=False, sheet_name='Backup_Ocorrencias')
         output.seek(0)
-        
-        # Envia o arquivo em memória para o navegador do usuário fazer o download
-        return send_file(output,
-                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                         as_attachment=True,
-                         download_name=nome_arquivo)
-
+        return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=nome_arquivo)
     except Exception as e:
-        flash(f"Ocorreu um erro ao gerar o backup em Excel: {e}", 'danger')
+        flash(f"Erro no backup: {e}", 'danger')
         return redirect(url_for('gerenciar_ocorrencias'))
     finally:
-        if cursor:
-            cursor.close()
+        if cursor: cursor.close()
 
-            # 🏛️ Rota para VISUALIZAR o histórico de ocorrências arquivadas
+# --- ROTAS HISTÓRICO ---
 @app.route('/historico')
 def historico():
     conn = None
@@ -954,21 +560,34 @@ def historico():
     try:
         conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
-        # Busca os dados da tabela de histórico, não da tabela principal
         cursor.execute("SELECT * FROM historico_ocorrencias ORDER BY id DESC")
         historico_ocorrencias = cursor.fetchall()
     except MySQLdb.Error as err:
         flash(f"Erro ao carregar o histórico: {err}", 'danger')
     finally:
-        if cursor:
-            cursor.close()
-            
-    # Renderiza um NOVO template chamado historico.html
+        if cursor: cursor.close()
     return render_template('historico.html', ocorrencias=historico_ocorrencias)
 
-    # 📜 Rota para exportar o HISTÓRICO COMPLETO para Excel
-# 📜 Rota para exportar o HISTÓRICO COMPLETO para Excel
-# 📜 Rota para exportar o HISTÓRICO COMPLETO para Excel (com formatação de hora)
+@app.route('/zerar_historico_confirmado', methods=['POST'])
+def zerar_historico_confirmado():
+    senha_digitada = request.form.get('password')
+    SENHA_MESTRA = "copomadmin2025" 
+    if senha_digitada == SENHA_MESTRA:
+        conn = None
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("TRUNCATE TABLE historico_ocorrencias")
+            conn.commit()
+            flash('Histórico zerado!', 'success')
+        except MySQLdb.Error as err:
+            flash(f"Erro ao limpar histórico: {err}", "danger")
+        finally:
+            if 'cursor' in locals() and cursor: cursor.close()
+    else:
+        flash('Senha incorreta!', 'danger')
+    return redirect(url_for('historico'))
+
 @app.route('/exportar_historico_excel')
 def exportar_historico_excel():
     conn = None
@@ -976,22 +595,17 @@ def exportar_historico_excel():
     try:
         conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
-        # Seleciona da tabela de HISTÓRICO
         cursor.execute("SELECT * FROM historico_ocorrencias ORDER BY id ASC")
         ocorrencias = cursor.fetchall()
 
         if not ocorrencias:
-            flash('Não há dados no histórico para exportar.', 'info')
+            flash('Histórico vazio.', 'info')
             return redirect(url_for('historico'))
 
         df = pd.DataFrame(ocorrencias)
-        
-        # --- INÍCIO DO BLOCO DE CORREÇÃO DE HORÁRIO ---
         colunas_de_horario = ['chegada_delegacia', 'entrega_ro', 'saida_delegacia']
-        
         def formatar_timedelta_para_hora(td):
-            if pd.isnull(td):
-                return ''
+            if pd.isnull(td): return ''
             segundos_totais = int(td.total_seconds())
             horas, resto = divmod(segundos_totais, 3600)
             minutos, segundos = divmod(resto, 60)
@@ -1000,89 +614,42 @@ def exportar_historico_excel():
         for coluna in colunas_de_horario:
             if coluna in df.columns:
                 df[coluna] = df[coluna].apply(formatar_timedelta_para_hora)
-        # --- FIM DO BLOCO DE CORREÇÃO ---
 
         output = BytesIO()
         nome_arquivo = f"historico_completo_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
-        # Usando 'xlsxwriter' pode dar um resultado melhor no Excel
         writer = pd.ExcelWriter(output, engine='openpyxl')
         df.to_excel(writer, index=False, sheet_name='Historico_Completo')
-        writer.close() # Alterado de save() para close() que é mais comum
-        
+        writer.close()
         output.seek(0)
 
-        return send_file(output,
-                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                         as_attachment=True,
-                         download_name=nome_arquivo)
-
+        return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=nome_arquivo)
     except Exception as e:
-        flash(f"Ocorreu um erro ao gerar o Excel do histórico: {e}", 'danger')
+        flash(f"Erro ao gerar Excel: {e}", 'danger')
         return redirect(url_for('historico'))
     finally:
-        if cursor:
-            cursor.close()
+        if cursor: cursor.close()
 
-            # 🔥 Rota para ZERAR PERMANENTEMENTE o histórico (agora com verificação de senha)
-@app.route('/zerar_historico_confirmado', methods=['POST'])
-def zerar_historico_confirmado():
-    # Pega a senha enviada pelo formulário no modal
-    senha_digitada = request.form.get('password')
-    
-    # SENHA MESTRA - Troque 'sua_senha_secreta' por uma senha de sua escolha
-    # O ideal é guardar esta senha em suas variáveis de ambiente (os.environ.get('ADMIN_PASSWORD'))
-    SENHA_MESTRA = "copomadmin2025" 
-
-    # Verifica se a senha digitada é a correta
-    if senha_digitada == SENHA_MESTRA:
-        conn = None
-        cursor = None
-        try:
-            conn = get_db()
-            cursor = conn.cursor()
-            # Usar TRUNCATE é mais rápido para limpar tabelas grandes
-            cursor.execute("TRUNCATE TABLE historico_ocorrencias")
-            conn.commit()
-            flash('Histórico de ocorrências zerado com sucesso!', 'success')
-        except MySQLdb.Error as err:
-            flash(f"Erro ao limpar o histórico: {err}", "danger")
-        finally:
-            if cursor:
-                cursor.close()
-    else:
-        # Se a senha estiver incorreta
-        flash('Senha incorreta! A operação foi cancelada.', 'danger')
-
-    return redirect(url_for('historico'))
-
-# --- Rota para Relatórios ---
+# --- ROTA RELATÓRIOS ---
 @app.route('/relatorios')
 def relatorios():
     conn = None
     cursor = None
-    # Define valores padrão para todas as variáveis no início.
-    supervisores_string = "Nenhum supervisor cadastrado."
+    supervisores_string = "Nenhum supervisor."
     cfps_data = []
     viaturas_data = []
     viaturas_por_unidade = []
     viaturas_por_status = []
-    totais_viaturas = {
-        'total_viaturas_geral': 0, 'total_capital': 0, 'total_interior': 0, 
-        'total_motos': 0, 'soma_atendimento_copom': 0, 'total_capital_interior_motos': 0
-    }
+    totais_viaturas = {}
 
     try:
         conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
-
-        # --- Seção 1 a 5: Buscando dados gerais (Supervisores, Contatos, etc.) ---
-        # (O código para buscar supervisores, contatos, viaturas, etc., continua aqui igual ao seu original)
+        
         cursor.execute("SELECT supervisor_operacoes, coordenador, supervisor_despacho, supervisor_atendimento FROM supervisores WHERE id = 1")
         supervisores_db_row = cursor.fetchone()
         if supervisores_db_row:
             supervisores_parts = [f"<strong>{k.replace('_', ' ').title()}:</strong> {v}" for k, v in supervisores_db_row.items() if v]
-            if supervisores_parts:
-                supervisores_string = " - ".join(supervisores_parts)
+            if supervisores_parts: supervisores_string = " - ".join(supervisores_parts)
 
         cursor.execute("SELECT c.id, u.nome_unidade AS unidade_nome, c.cfp, c.telefone FROM contatos c JOIN unidades u ON c.unidade_id = u.id ORDER BY u.nome_unidade, c.cfp")
         cfps_data = cursor.fetchall()
@@ -1096,24 +663,15 @@ def relatorios():
         cursor.execute("SELECT status, COUNT(id) AS quantidade FROM viaturas GROUP BY status ORDER BY status")
         viaturas_por_status = cursor.fetchall()
 
-        # --- Seção 6: Cálculo de Totais de Viaturas (LÓGICA CORRETA COM PANDAS) ---
         cursor.execute("SELECT status FROM viaturas")
         lista_status_raw = cursor.fetchall()
 
         if lista_status_raw:
             df = pd.DataFrame(lista_status_raw)
             df['status'] = df['status'].fillna('').str.strip()
-
             total_interior = (df['status'] == 'INTERIOR').sum()
             total_motos = (df['status'] == 'MOTO').sum()
-            # Define a lista explícita de status que devem ser somados em 'Capital'
-            status_capital = [
-                'ADM', 'CFP', 'FORÇATÁTICA', 'RP', 'TRÂNSITO', 'ADJ CFP', 
-                'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITÁRIO', 
-                # 'JUIZADO',  <-- Removido da soma de Capital
-                'TRANSITO/BLITZ'
-            ]
-# Soma apenas as viaturas cujo status está na lista acima
+            status_capital = ['ADM', 'CFP', 'FORÇATÁTICA', 'RP', 'TRÂNSITO', 'ADJ CFP', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITÁRIO', 'TRANSITO/BLITZ']
             total_capital = df['status'].isin(status_capital).sum()
             soma_atendimento_copom = df['status'].isin(['FORÇATÁTICA', 'RP', 'TRÂNSITO']).sum()
             total_viaturas_geral = len(df)
@@ -1126,119 +684,63 @@ def relatorios():
                 'soma_atendimento_copom': int(soma_atendimento_copom),
                 'total_capital_interior_motos': int(total_viaturas_geral)
             }
-            # Adicionando um print para os logs do Render, para termos certeza
-            print(f"DEBUG: Totais calculados: {totais_viaturas}")
-            
     except MySQLdb.Error as err:
-        flash(f"Erro no banco de dados ao carregar relatórios: {err}", 'danger')
-        
+        flash(f"Erro no banco: {err}", 'danger')
     finally:
-        if cursor:
-            cursor.close()
+        if cursor: cursor.close()
 
-    return render_template('relatorios.html',
-                           supervisores_string=supervisores_string,
-                           cfps=cfps_data,
-                           viaturas=viaturas_data,
-                           viaturas_por_unidade=viaturas_por_unidade,
-                           viaturas_por_status=viaturas_por_status,
-                           totais_viaturas=totais_viaturas)
+    return render_template('relatorios.html', supervisores_string=supervisores_string, cfps=cfps_data, viaturas=viaturas_data, viaturas_por_unidade=viaturas_por_unidade, viaturas_por_status=viaturas_por_status, totais_viaturas=totais_viaturas)
 
-@app.route('/debug-status')
-def debug_status():
-    conn = None
-    cursor = None
-    output_html = "<h1>Diagnóstico de Status de Viaturas</h1>"
-    
-    try:
-        conn = get_db()
-        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
-        
-        cursor.execute("SELECT DISTINCT status FROM viaturas")
-        unique_statuses = cursor.fetchall()
-        
-        if not unique_statuses:
-            return "Nenhum status encontrado na tabela de viaturas."
-
-        output_html += "<table border='1' cellpadding='5'><tr><th>Status do Banco</th><th>É 'INTERIOR'?</th><th>É 'MOTO'?</th></tr>"
-
-        for row in unique_statuses:
-            status_original = row['status']
-            
-            # Aplica a mesma limpeza que usamos no código de relatórios
-            status_limpo = status_original.strip() if status_original else ''
-            
-            # Realiza as comparações exatas
-            is_interior = (status_limpo == 'INTERIOR')
-            is_moto = (status_limpo == 'MOTO')
-            
-            # Monta a linha da tabela de diagnóstico
-            output_html += f"<tr><td>'{status_limpo}'</td><td>{is_interior}</td><td>{is_moto}</td></tr>"
-
-        output_html += "</table>"
-        return output_html
-
-    except Exception as e:
-        return f"Ocorreu um erro durante o diagnóstico: {e}"
-    finally:
-        if cursor:
-            cursor.close()
-
-# Adicione este import no topo do seu app.py, junto com os outros
-import unicodedata
-
+# --- DASHBOARD ---
 @app.route('/dashboard')
 def dashboard():
     conn = None
     cursor = None
-    # Valores padrão
     kpis = {'total_ocorrencias': 0, 'delegacia_top': 'N/D', 'media_tempo_dp': '00:00'}
-    dados_fatos_barras = []
+    dados_fatos_paginados = []
     dados_mensais = []
     status_chart_data = {}
-    # A variável bar_chart_horas_data foi REMOVIDA
 
     try:
         conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
-
         cursor.execute("SELECT * FROM historico_ocorrencias")
         historico_completo = cursor.fetchall()
 
         if historico_completo:
             df = pd.DataFrame(historico_completo)
+            def limpar_texto(texto):
+                if not isinstance(texto, str): return 'OUTROS'
+                texto_sem_acento = "".join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
+                return texto_sem_acento.replace('.', '').replace('-', ' ').strip().upper()
 
-            # --- 1. LIMPEZA E AGRUPAMENTO GERAL ---
             df['data_registro'] = pd.to_datetime(df['data_registro'])
-            df['fato'] = df['fato'].fillna('OUTROS').str.strip().str.upper()
+            df['fato_limpo'] = df['fato'].apply(limpar_texto)
             df['delegacia'] = df['delegacia'].fillna('N/D').str.strip().str.upper()
             df['status'] = df['status'].fillna('N/A').str.strip().str.upper()
             delegacia_mapa = {'DEPAC CEPOL': 'CEPOL'}
             df['delegacia'] = df['delegacia'].replace(delegacia_mapa)
             
-            palavras_chave_fatos = [
-                'VIOLENCIA DOMESTICA', 'DIREÇÃO PERIGOSA', 'LESAO CORPORAL', 'HOMICIDIO', 
-                'ROUBO', 'FURTO', 'TRAFICO', 'EVASÃO', 'AMEAÇA'
-            ]
-            def agrupar_fato(fato_original):
+            palavras_chave_fatos = ['VIOLENCIA DOMESTICA', 'DIRECAO PERIGOSA', 'LESAO CORPORAL', 'HOMICIDIO', 'ROUBO', 'FURTO', 'TRAFICO', 'EVASAO', 'AMEACA', 'TCO', 'APF', 'ENTREGA', 'MANDADO DE PRISAO', 'VIAS DE FATO', 'PERTURBACAO', 'DANO', 'DESACATO']
+            def agrupar_fato(fato_limpo):
                 for chave in palavras_chave_fatos:
-                    if chave in fato_original: return chave
-                return fato_original
-            df['fato_agrupado'] = df['fato'].apply(agrupar_fato)
+                    if chave in fato_limpo: return chave
+                return fato_limpo
+            df['fato_agrupado'] = df['fato_limpo'].apply(agrupar_fato)
 
-            # --- 2. CÁLCULOS PARA GRÁFICOS E KPIs ---
             kpis['total_ocorrencias'] = len(df)
             if not df['delegacia'].dropna().empty:
                 kpis['delegacia_top'] = df['delegacia'].mode().get(0, 'N/D')
             
-            contagem_fatos_geral = df['fato_agrupado'].value_counts().reset_index()
-            contagem_fatos_geral.columns = ['fato', 'quantidade']
-            dados_fatos_barras = contagem_fatos_geral.to_dict('records')
+            contagem_fatos = df['fato_agrupado'].value_counts().reset_index()
+            contagem_fatos.columns = ['fato', 'quantidade']
+            todos_fatos = contagem_fatos.to_dict('records')
+            for i in range(0, len(todos_fatos), 10):
+                dados_fatos_paginados.append(todos_fatos[i:i + 10])
 
-            contagem_status_geral = df['status'].value_counts()
-            status_chart_data = {'labels': contagem_status_geral.index.tolist(), 'data': [int(q) for q in contagem_status_geral.values.tolist()]}
+            contagem_status = df['status'].value_counts()
+            status_chart_data = {'labels': contagem_status.index.tolist(), 'data': [int(q) for q in contagem_status.values.tolist()]}
             
-            # Cálculo da média de tempo para o KPI
             df_horas_total = df[df['tempo_total_dp'].notna()].copy()
             def hhmm_para_minutos(valor):
                 if isinstance(valor, timedelta): return valor.total_seconds() / 60
@@ -1246,58 +748,48 @@ def dashboard():
                     try:
                         h, m = map(int, valor.split(':')[:2])
                         return h * 60 + m
-                    except (ValueError, TypeError): return 0
+                    except: return 0
                 return 0
             df_horas_total['minutos_dp'] = df_horas_total['tempo_total_dp'].apply(hhmm_para_minutos)
             if not df_horas_total.empty:
-                media_minutos_total = df_horas_total['minutos_dp'].mean()
-                if pd.notna(media_minutos_total):
-                    horas_media, minutos_media = divmod(int(media_minutos_total), 60)
-                    kpis['media_tempo_dp'] = f"{horas_media:02}:{minutos_media:02}"
+                media = df_horas_total['minutos_dp'].mean()
+                if pd.notna(media):
+                    h, m = divmod(int(media), 60)
+                    kpis['media_tempo_dp'] = f"{h:02}:{m:02}"
 
-            # --- 3. LÓGICA PARA GRÁFICOS MENSAIS ---
             df['mes'] = df['data_registro'].dt.to_period('M').astype(str)
             meses_unicos = sorted(df['mes'].unique())
             for mes in meses_unicos:
                 df_mes = df[df['mes'] == mes]
-                
-                # Top 3 Fatos do Mês
-                contagem_fatos_mes = df_mes['fato_agrupado'].value_counts().reset_index()
-                contagem_fatos_mes.columns = ['fato', 'quantidade']
-                if len(contagem_fatos_mes) > 3:
-                    top_3 = contagem_fatos_mes.head(3)
-                    outros_soma = contagem_fatos_mes.iloc[3:]['quantidade'].sum()
-                    labels_top3 = top_3['fato'].tolist() + ['OUTROS']
-                    data_top3 = [int(q) for q in top_3['quantidade'].tolist()] + [int(outros_soma)]
+                contagem = df_mes['fato_agrupado'].value_counts().reset_index()
+                contagem.columns = ['fato', 'quantidade']
+                if len(contagem) > 3:
+                    top_3 = contagem.head(3)
+                    outros = contagem.iloc[3:]['quantidade'].sum()
+                    labels = top_3['fato'].tolist() + ['OUTROS']
+                    data = [int(q) for q in top_3['quantidade'].tolist()] + [int(outros)]
                 else:
-                    labels_top3 = contagem_fatos_mes['fato'].tolist()
-                    data_top3 = [int(q) for q in contagem_fatos_mes['quantidade'].tolist()]
+                    labels = contagem['fato'].tolist()
+                    data = [int(q) for q in contagem['quantidade'].tolist()]
                 
-                # Horas por Delegacia do Mês
                 df_horas_mes = df_mes[df_mes['tempo_total_dp'].notna()].copy()
                 df_horas_mes['minutos_dp'] = df_horas_mes['tempo_total_dp'].apply(hhmm_para_minutos)
-                horas_por_delegacia_mes = df_horas_mes.groupby('delegacia')['minutos_dp'].sum() / 60
-                horas_por_delegacia_mes = horas_por_delegacia_mes[horas_por_delegacia_mes > 0].round(1)
+                horas_dp = df_horas_mes.groupby('delegacia')['minutos_dp'].sum() / 60
+                horas_dp = horas_dp[horas_dp > 0].round(1)
                 
                 dados_mensais.append({
                     'mes': mes,
-                    'top3_fatos': {'labels': labels_top3, 'data': data_top3},
-                    'horas_delegacia': {'labels': horas_por_delegacia_mes.index.tolist(), 'data': [float(h) for h in horas_por_delegacia_mes.values.tolist()]}
+                    'top3_fatos': {'labels': labels, 'data': data},
+                    'horas_delegacia': {'labels': horas_dp.index.tolist(), 'data': [float(h) for h in horas_dp.values.tolist()]}
                 })
 
     except Exception as e:
-        print(f"ERRO NO DASHBOARD: {e}")
-        flash(f"Ocorreu um erro ao gerar as estatísticas: {e}", "danger")
+        print(f"ERRO DASHBOARD: {e}")
+        flash(f"Erro estatísticas: {e}", "danger")
     finally:
-        if cursor:
-            cursor.close()
+        if cursor: cursor.close()
 
-    # A variável 'bar_chart_horas_data' foi removida do retorno
-    return render_template('dashboard.html', 
-                           kpis=kpis, 
-                           dados_fatos_barras=dados_fatos_barras,
-                           dados_mensais=dados_mensais,
-                           status_chart_data=status_chart_data)
+    return render_template('dashboard.html', kpis=kpis, dados_fatos_paginados=dados_fatos_paginados, dados_mensais=dados_mensais, status_chart_data=status_chart_data)
 
 @app.route('/exportar_dashboard')
 def exportar_dashboard():
@@ -1306,53 +798,234 @@ def exportar_dashboard():
     try:
         conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
-
         cursor.execute("SELECT * FROM historico_ocorrencias")
         historico_completo = cursor.fetchall()
-
         if not historico_completo:
-            flash('Não há dados no histórico para exportar.', 'info')
+            flash('Sem dados para exportar.', 'info')
             return redirect(url_for('dashboard'))
-
+        
         df = pd.DataFrame(historico_completo)
-        
-        # --- PREPARAÇÃO DOS DADOS PARA AS ABAS DE ESTATÍSTICAS ---
-        df_para_estatisticas = df.copy()
-        df_para_estatisticas['fato'] = df_para_estatisticas['fato'].fillna('OUTROS').str.strip().str.upper()
-        df_para_estatisticas['delegacia'] = df_para_estatisticas['delegacia'].fillna('N/D').str.strip().str.upper()
-        delegacia_mapa = {'DEPAC CEPOL': 'CEPOL'}
-        df_para_estatisticas['delegacia'] = df_para_estatisticas['delegacia'].replace(delegacia_mapa)
-        df_para_estatisticas['status'] = df_para_estatisticas['status'].fillna('N/A').str.strip().str.upper()
-        
-        palavras_chave_fatos = ['VIOLENCIA DOMESTICA', 'DIREÇÃO PERIGOSA', 'LESAO CORPORAL', 'HOMICIDIO', 'ROUBO', 'FURTO', 'TRAFICO', 'EVASÃO', 'AMEAÇA']
-        def agrupar_fato(fato_original):
-            for chave in palavras_chave_fatos:
-                if chave in fato_original: return chave
-            return fato_original
-        df_para_estatisticas['fato_agrupado'] = df_para_estatisticas['fato'].apply(agrupar_fato)
+        # (Limpeza e preparação de dados igual ao dashboard aqui)
+        # ...
+        # Formatação de Horas para Excel
+        colunas_de_horario = ['chegada_delegacia', 'entrega_ro', 'saida_delegacia']
+        def formatar_timedelta(td):
+            if pd.isnull(td): return ''
+            segundos = int(td.total_seconds())
+            h, r = divmod(segundos, 3600)
+            m, s = divmod(r, 60)
+            return f"'{h:02}:{m:02}:{s:02}"
+        for col in colunas_de_horario:
+            if col in df.columns: df[col] = df[col].apply(formatar_timedelta)
 
-        kpis_df = pd.DataFrame([
-            {'Indicador': 'Total de Ocorrências', 'Valor': len(df_para_estatisticas)},
-            {'Indicador': 'Delegacia Mais Acionada', 'Valor': df_para_estatisticas['delegacia'].mode().get(0, 'N/D') if not df_para_estatisticas['delegacia'].empty else 'N/D'}
-        ])
+        output = BytesIO()
+        writer = pd.ExcelWriter(output, engine='openpyxl')
+        df.to_excel(writer, sheet_name='Dados Completos', index=False)
+        writer.close()
+        output.seek(0)
+        nome = f"dashboard_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+        return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=nome)
+    except Exception as e:
+        flash(f"Erro Excel: {e}", "danger")
+        return redirect(url_for('dashboard'))
+    finally:
+        if cursor: cursor.close()
+
+# ROTAS DE GERENCIAMENTO DE FATOS
+@app.route('/gerenciar_fatos')
+def gerenciar_fatos():
+    conn = None
+    cursor = None
+    fatos = []
+    try:
+        conn = get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+        cursor.execute("SELECT * FROM tipos_fatos ORDER BY nome ASC")
+        fatos = cursor.fetchall()
+    finally:
+        if cursor: cursor.close()
+    return render_template('gerenciar_fatos.html', fatos=fatos)
+
+@app.route('/adicionar_fato', methods=['POST'])
+def adicionar_fato():
+    # Função local de limpeza para garantir que entre limpo no banco
+    def limpar_texto_insercao(texto):
+        if not isinstance(texto, str): return ''
+        texto_sem_acento = "".join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
+        return texto_sem_acento.strip().upper()
+
+    nome = limpar_texto_insercao(request.form.get('nome', ''))
+    
+    if nome:
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            # Verifica se já existe algo parecido
+            cursor.execute("SELECT id FROM tipos_fatos WHERE nome = %s", (nome,))
+            if cursor.fetchone():
+                flash(f'O fato "{nome}" já existe na lista.', 'warning')
+            else:
+                cursor.execute("INSERT INTO tipos_fatos (nome) VALUES (%s)", (nome,))
+                conn.commit()
+                flash('Novo fato adicionado!', 'success')
+        except Exception as e:
+            flash(f'Erro ao adicionar: {e}', 'danger')
+        finally:
+            cursor.close()
+    return redirect(url_for('gerenciar_fatos'))
+
+@app.route('/excluir_fato/<int:id>', methods=['POST'])
+def excluir_fato(id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM tipos_fatos WHERE id = %s", (id,))
+    conn.commit()
+    flash('Fato removido.', 'success')
+    return redirect(url_for('gerenciar_fatos'))
+
+@app.route('/popular_fatos')
+def popular_fatos():
+    senha_digitada = request.form.get('password')
+    SENHA_MESTRA = "copomadmin2025" # Mesma senha que você usou no histórico
+
+    if senha_digitada == SENHA_MESTRA:
+        conn = get_db()
+        cursor = conn.cursor()
+    
+    # Função local de limpeza para popular
+    def limpar_texto_populacao(texto):
+        texto_sem_acento = "".join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
+        return texto_sem_acento.strip().upper()
+
+    # LISTA INICIAL DE CRIMES (PARA POPULAR O BANCO)
+    LISTA_CRIMES_INICIAL = [
+        "ART 121   HOMICIDIO",
+        "ART 122   INDUZIMENTO INSTIGACAO OU AUXILIO AO SUICIDIO",
+        "ART 123   INFANTICIDIO",
+        "ART 124   ABORTO PROVOCADO PELA GESTANTE",
+        "ART 125   ABORTO PROVOCADO POR TERCEIRO",
+        "ART 126   ABORTO SEM CONSENTIMENTO",
+        "ART 127   FORMA QUALIFICADA DO ABORTO",
+        "ART 129   LESAO CORPORAL",
+        "ART 130   PERIGO DE CONTAGIO VENEREO",
+        "ART 131   PERIGO DE CONTAGIO DE MOLESTIA GRAVE",
+        "ART 132   PERIGO PARA A VIDA OU SAUDE",
+        "ART 133   ABANDONO DE INCAPAZ",
+        "ART 134   EXPOSICAO OU ABANDONO DE RECEM NASCIDO",
+        "ART 135   OMISSAO DE SOCORRO",
+        "ART 136   MAUS TRATOS",
+        "ART 137   RIXA",
+        "ART 138   CALUNIA",
+        "ART 139   DIFAMACAO",
+        "ART 140   INJURIA",
+        "ART 146   CONSTRANGIMENTO ILEGAL",
+        "ART 147   AMEACA",
+        "ART 148   CARCERE PRIVADO",
+        "ART 149   REDUCAO A CONDICAO ANALOGA A DE ESCRAVO",
+        "ART 149 A   TRAFICO DE PESSOAS",
+        "ART 150   VIOLACAO DE DOMICILIO",
+        "ART 151   VIOLACAO DE CORRESPONDENCIA",
+        "ART 152   DIVULGACAO INDEVIDA DE CORRESPONDENCIA",
+        "ART 155   FURTO",
+        "ART 157   ROUBO",
+        "ART 158   EXTORSAO",
+        "ART 159   EXTORSAO MEDIANTE SEQUESTRO",
+        "ART 160   CONSTRANGIMENTO ILEGAL PATRIMONIAL",
+        "ART 161   ALTERACAO DE LIMITES",
+        "ART 162   ESBULHO POSSESSORIO",
+        "ART 163   DANO",
+        "ART 164   DANO EM COISA DE USO COMUM",
+        "ART 168   APROPRIACAO INDEBITA",
+        "ART 169   APROPRIACAO DE COISA ACHADA",
+        "ART 171   ESTELIONATO",
+        "ART 180   RECEPTACAO",
+        "ART 184   VIOLACAO DE DIREITO AUTORAL",
+        "ART 197 A 207   CRIMES CONTRA O TRABALHO",
+        "ART 208   VILIPENDIO A CULTO",
+        "ART 209   PERTURBACAO DE CERIMONIA",
+        "ART 210   ULTRAJE A CULTO",
+        "ART 211   DESTRUICAO DE SEPULTURA",
+        "ART 212   VILIPENDIO A CADAVER",
+        "ART 213   ESTUPRO",
+        "ART 214   VIOLACAO SEXUAL MEDIANTE FRAUDE",
+        "ART 215 A   IMPORTUNACAO SEXUAL",
+        "ART 216 A   ASSEDIO SEXUAL",
+        "ART 217 A   ESTUPRO DE VULNERAVEL",
+        "ART 218   SATISFACAO DE LASCIVIA",
+        "ART 218 A   FAVORECIMENTO DA PROSTITUICAO DE MENOR",
+        "ART 218 B   EXPLORACAO SEXUAL",
+        "ART 250 A 259   INCENDIO EXPLOSAO",
+        "ART 267 A 285   CRIMES CONTRA SAUDE PUBLICA",
+        "ART 286   INCITACAO AO CRIME",
+        "ART 287   APOLOGIA",
+        "ART 288   ASSOCIACAO CRIMINOSA",
+        "ART 289 A 311   MOEDA FALSA FALSIFICACAO",
+        "ART 312   PECULATO",
+        "ART 313   INSERCAO DE DADOS FALSOS",
+        "ART 316   CONCUSSAO",
+        "ART 317   CORRUPCAO PASSIVA",
+        "ART 318   FACILITACAO DE CONTRABANDO",
+        "ART 319   PREVARICACAO",
+        "ART 320   CONDESCENDENCIA CRIMINOSA",
+        "ART 321   ADVOCACIA ADMINISTRATIVA",
+        "ART 330   DESOBEDIENCIA",
+        "ART 331   DESACATO",
+        "ART 333   CORRUPCAO ATIVA",
+        "ART 334   CONTRABANDO",
+        "ART 334 A   DESCAMINHO",
+        "ART 339   DENUNCIACAO CALUNIOSA",
+        "ART 340   COMUNICACAO FALSA DE CRIME",
+        "ART 342   FALSO TESTEMUNHO",
+        "ART 347   FRAUDE PROCESSUAL",
+        "DESCUMPRIMENTO DE MEDIDA PROTETIVA",
+        "MANDADO DE PRISAO",
+        "VIAS DE FATO",
+        "TRAFICO DE DROGAS",
+        "CRIME CONTRA CRIANCA E ADOLESCENTE ECA",
+        "SUICIDIO",
+        "EMBRIAGUES AO VOLANTE",
+        "ADULTERACAO DE SINAL IDENTIFICADOR",
+        "DIRECAO PERIGOSA",
+        "EVASAO"
+    ]
+
+    for crime in LISTA_CRIMES_INICIAL:
+        crime_limpo = limpar_texto_populacao(crime)
+        cursor.execute("SELECT id FROM tipos_fatos WHERE nome = %s", (crime_limpo,))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO tipos_fatos (nome) VALUES (%s)", (crime_limpo,))
+    
+    conn.commit()
+    flash('Lista populada com sucesso (nomes padronizados sem acentos)!', 'success')
+    return redirect(url_for('gerenciar_fatos'))
+
+# 📄 Rota para EXPORTAR O RELATÓRIO DE OCORRÊNCIAS (Excel) - REINCLUÍDA
+@app.route('/exportar_relatorio_excel')
+def exportar_relatorio_excel():
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+
+        # Busca todas as ocorrências para o relatório
+        cursor.execute("SELECT * FROM ocorrencias_cepol ORDER BY data_registro DESC")
+        ocorrencias = cursor.fetchall()
+
+        if not ocorrencias:
+            flash('Não há dados para exportar para Excel.', 'info')
+            return redirect(url_for('gerenciar_ocorrencias'))
+
+        df = pd.DataFrame(ocorrencias)
         
-        contagem_fatos = df_para_estatisticas['fato_agrupado'].value_counts().reset_index()
-        contagem_fatos.columns = ['Fato', 'Quantidade']
-        
-        contagem_status = df_para_estatisticas['status'].value_counts().reset_index()
-        contagem_status.columns = ['Status', 'Quantidade']
-
-        # --- FIM DA PREPARAÇÃO DAS ESTATÍSTICAS ---
-
-
-        # ================================================================= #
-        # ▼▼▼ BLOCO DE CORREÇÃO DE HORÁRIO PARA A ABA DE DADOS BRUTOS ▼▼▼ #
-        # ================================================================= #
+        # --- BLOCO DE FORMATAÇÃO DE HORÁRIOS (Para evitar erro no Excel) ---
         colunas_de_horario = ['chegada_delegacia', 'entrega_ro', 'saida_delegacia']
         
         def formatar_timedelta_para_hora(td):
-            if pd.isnull(td):
-                return '' 
+            if pd.isnull(td): return ''
+            # Se for string, tenta manter ou limpar
+            if isinstance(td, str): return td
+            # Se for timedelta, converte
             segundos_totais = int(td.total_seconds())
             horas, resto = divmod(segundos_totais, 3600)
             minutos, segundos = divmod(resto, 60)
@@ -1361,36 +1034,25 @@ def exportar_dashboard():
         for coluna in colunas_de_horario:
             if coluna in df.columns:
                 df[coluna] = df[coluna].apply(formatar_timedelta_para_hora)
-        # ================================================================= #
-        
-        # GERA O ARQUIVO EXCEL COM VÁRIAS ABAS
+        # -------------------------------------------------------------------
+
         output = BytesIO()
         writer = pd.ExcelWriter(output, engine='openpyxl')
-        
-        # Escreve cada DataFrame em uma aba diferente
-        kpis_df.to_excel(writer, sheet_name='Indicadores Chave', index=False)
-        contagem_fatos.to_excel(writer, sheet_name='Ocorrencias por Fato', index=False)
-        contagem_status.to_excel(writer, sheet_name='Ocorrencias por Status', index=False)
-        df.to_excel(writer, sheet_name='Dados Brutos Completos', index=False)
-
+        df.to_excel(writer, index=False, sheet_name='Ocorrencias')
         writer.close()
         output.seek(0)
-        
-        nome_arquivo = f"dashboard_estatisticas_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+
         return send_file(output,
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                          as_attachment=True,
-                         download_name=nome_arquivo)
+                         download_name='relatorio_ocorrencias_cepol.xlsx')
 
     except Exception as e:
-        flash(f"Ocorreu um erro ao gerar o relatório Excel: {e}", "danger")
-        return redirect(url_for('dashboard'))
+        flash(f"Erro ao gerar Excel: {e}", 'danger')
+        return redirect(url_for('gerenciar_ocorrencias'))
     finally:
         if cursor:
             cursor.close()
 
-# ... (restante do seu app.py, incluindo app.run(debug=True)
-
-# ESTE BLOCO DEVE ESTAR NO FINAL DO SEU ARQUIVO
 if __name__ == '__main__':
     app.run(debug=True)

@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+{% block title %}Gerenciar Lista de Fatos{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center mb-4">Gerenciar Lista de Crimes (Fatos)</h2>
+    
+    <!-- Cartão para Adicionar Manualmente -->
+    <div class="card p-4 mb-4">
+        
+        <!-- Cabeçalho do Card com o Botão Restaurar (para economizar espaço embaixo) -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0">Adicionar Novo Crime</h4>
+            <!-- Botão Restaurar movido para cá, menor e mais discreto -->
+            <button type="button" class="btn btn-sm btn-outline-warning text-dark" data-bs-toggle="modal" data-bs-target="#modalRestaurar">
+                <i class="bi bi-arrow-clockwise"></i> Restaurar Padrão
+            </button>
+        </div>
+
+        <!-- Formulário Ajustado: Campo Grande, Botão Normal -->
+        <form action="{{ url_for('adicionar_fato') }}" method="POST" class="row g-2 align-items-start">
+            
+            <!-- Campo de Input (ocupa todo o espaço restante) -->
+            <div class="col">
+                <input type="text" name="nome" class="form-control" 
+                       id="inputFato"
+                       placeholder="Digite o nome do crime/fato (Ex: ROUBO)" 
+                       required 
+                       autocomplete="off"
+                       oninput="validarInput(this)">
+                
+                <!-- Mensagem de erro -->
+                <div class="invalid-feedback fw-bold">
+                    <i class="bi bi-exclamation-triangle-fill"></i> Este crime já está cadastrado na lista!
+                </div>
+            </div>
+
+            <!-- Botão Adicionar (ocupa apenas o espaço necessário) -->
+            <div class="col-auto">
+                <button type="submit" id="btnAdicionar" class="btn btn-success px-4">Adicionar</button>
+            </div>
+        </form>
+        
+        <small class="text-muted mt-2 d-block">
+            <i class="bi bi-info-circle"></i> O sistema padroniza automaticamente para maiúsculas e sem acentos.
+        </small>
+    </div>
+
+    <!-- Tabela de Listagem -->
+    <div class="card p-4">
+        <h4>Lista Atual</h4>
+        <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Nome do Fato</th>
+                        <th style="width: 100px;">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fato in fatos %}
+                    <tr>
+                        <td>{{ fato.nome }}</td>
+                        <td>
+                            <form action="{{ url_for('excluir_fato', id=fato.id) }}" method="POST" onsubmit="return confirm('Tem certeza que deseja excluir este item?');">
+                                <button type="submit" class="btn btn-danger btn-sm" title="Excluir">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="2" class="text-center text-muted">
+                            A lista está vazia. Adicione manualmente acima ou use o botão Restaurar.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="mt-3 text-center">
+        <a href="{{ url_for('gerenciar_ocorrencias') }}" class="btn btn-secondary">Voltar para Ocorrências</a>
+    </div>
+</div>
+
+<!-- MODAL DE SENHA PARA RESTAURAR LISTA -->
+<div class="modal fade" id="modalRestaurar" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title text-dark">Segurança Necessária</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('popular_fatos') }}" method="POST">
+                <div class="modal-body text-dark">
+                    <p>Esta ação irá inserir a lista padrão de crimes no banco de dados (sem duplicar os existentes).</p>
+                    <p class="fw-bold">Para confirmar, digite a senha de administrador:</p>
+                    <div class="mb-3">
+                        <input type="password" name="password" class="form-control" placeholder="Senha" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-warning text-dark">Confirmar e Restaurar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Script de Validação em Tempo Real -->
+<script>
+    // Cria uma lista JavaScript com todos os crimes que já estão na tabela
+    // Isso permite verificar instantaneamente sem ir ao servidor
+    const crimesExistentes = [
+        {% for fato in fatos %}
+            "{{ fato.nome }}",
+        {% endfor %}
+    ];
+
+    function validarInput(input) {
+        const btn = document.getElementById('btnAdicionar');
+        
+        // 1. Limpeza (Maiúsculo e sem acento)
+        let valorOriginal = input.value;
+        let valorLimpo = valorOriginal.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        
+        // Atualiza o campo visualmente
+        if (valorOriginal !== valorLimpo) {
+            input.value = valorLimpo;
+        }
+
+        // 2. Verificação de Duplicidade
+        // Se o valor limpo já estiver na lista de crimes existentes...
+        if (crimesExistentes.includes(valorLimpo)) {
+            // Adiciona a classe de erro do Bootstrap (deixa vermelho e mostra a div invalid-feedback)
+            input.classList.add('is-invalid');
+            // Bloqueia o botão de adicionar
+            btn.disabled = true;
+        } else {
+            // Remove o erro
+            input.classList.remove('is-invalid');
+            // Libera o botão
+            btn.disabled = false;
+        }
+    }
+</script>
+{% endblock %}

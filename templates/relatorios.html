@@ -192,6 +192,27 @@
         /* ================================================================================================= */
         /* === FIM DOS ESTILOS ESPECÍFICOS PARA IMPRESSÃO ================================================ */
         /* ================================================================================================= */
+
+        /* ================================================================================================= */
+    /* === NOVO: FORÇAR ALINHAMENTO NAS TABELAS DE "TODAS AS VIATURAS" ============================== */
+    /* ================================================================================================= */
+    #todas-viaturas-card .table th.col-prefixo,
+    #todas-viaturas-card .table td:nth-child(1) {
+        width: 20%; 
+    }
+
+    #todas-viaturas-card .table th.col-status,
+    #todas-viaturas-card .table td:nth-child(2) {
+        width: 40%; 
+        word-break: break-word; 
+    }
+
+    #todas-viaturas-card .table th.col-hora,
+    #todas-viaturas-card .table td:nth-child(3),
+    #todas-viaturas-card .table td:nth-child(4) {
+        width: 20%; 
+        text-align: center; 
+    }
     </style>
 </head>
 <body>
@@ -361,44 +382,58 @@
             </div>
         </div>
 
-        {# 4. Todas as Viaturas Cadastradas (sozinho - largura total) #}
+        {# 4. Todas as Viaturas Cadastradas (AGORA AGRUPADAS POR UNIDADE) #}
         <div class="card mt-4 mb-4" id="todas-viaturas-card">
             <div class="card-header">
-                Todas as Viaturas Cadastradas
+                Todas as Viaturas Cadastradas (Por Unidade)
                 <button class="btn btn-sm print-block-btn" onclick="printSection('todas-viaturas-card')">Imprimir Bloco</button>
             </div>
             <div class="card-body">
                 {% if viaturas %}
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover">
-                        <thead>
-                            <tr>
-                                <th>Unidade</th>
-                                <th>Prefixo</th>
-                                <th>Status</th>
-                                <th>Entrada</th>
-                                <th>Saída</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for viatura in viaturas %}
-                            {# Aplica a classe de cor baseada na unidade #}
-                            <tr class="{{ unit_color_map[viatura.unidade_nome] if viatura.unidade_nome in unit_color_map else '' }}">
-                                <td>{{ viatura.unidade_nome }}</td>
-                                <td>{{ viatura.prefixo }}</td>
-                                <td>{{ viatura.status }}</td>
-                                <td>{{ viatura.hora_entrada if viatura.hora_entrada else 'N/A' }}</td>
-                                <td>{{ viatura.hora_saida if viatura.hora_saida else 'N/A' }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                    {# Agrupa as viaturas por unidade #}
+                    {% for unidade, lista_viaturas in viaturas|groupby('unidade_nome') %}
+                        
+                        {# Bloco simples para cada unidade #}
+                        <div class="mb-4">
+                            
+                            {# Título da Unidade em VERDE (text-success) e negrito #}
+                            <h4 class="text-success border-bottom pb-2 mb-3 fw-bold">
+                                {{ unidade }}
+                            </h4>
+                            
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped table-hover table-fixed">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-prefixo">Prefixo</th>
+                                            <th class="col-status">Status</th>
+                                            <th class="col-hora">Entrada</th>
+                                            <th class="col-hora">Saída</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for viatura in lista_viaturas %}
+                                        <tr>
+                                            <td><strong>{{ viatura.prefixo }}</strong></td>
+                                            <td>{{ viatura.status }}</td>
+                                            <td>{{ viatura.hora_entrada if viatura.hora_entrada else 'N/A' }}</td>
+                                            <td>{{ viatura.hora_saida if viatura.hora_saida else 'N/A' }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            <div class="text-end text-muted small">
+                                Total em {{ unidade }}: {{ lista_viaturas|length }}
+                            </div>
+                        </div>
+
+                    {% endfor %}
                 {% else %}
-                <p class="text-center text-muted">Nenhuma viatura cadastrada.</p>
+                    <p class="text-center text-muted">Nenhuma viatura cadastrada.</p>
                 {% endif %}
             </div>
-        </div>
 
         {# Botões de Navegação e Impressão Global #}
         <div class="container mt-4 mb-4 text-center global-controls-container">
