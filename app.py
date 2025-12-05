@@ -186,10 +186,13 @@ def editar_contato(contato_id):
     conn = None
     cursor = None
     contato = None
+    unidades = [] # Inicializa a lista
+
     try:
         conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
         
+        # 1. Processa o Formulário (POST)
         if request.method == 'POST':
             unidade_id = request.form['unidade_id']
             cfp = request.form['cfp']
@@ -199,10 +202,17 @@ def editar_contato(contato_id):
             flash('Contato atualizado com sucesso!', 'success')
             return redirect(url_for('cadastro_viaturas', unidade_id=unidade_id))
 
+        # 2. Busca os dados do Contato (GET)
         cursor.execute("SELECT * FROM contatos WHERE id = %s", (contato_id,))
         contato = cursor.fetchone()
+        
+        # 3. Busca a lista de Unidades para o dropdown (FALTAVA ISSO)
+        cursor.execute("SELECT * FROM unidades ORDER BY nome_unidade ASC")
+        unidades = cursor.fetchall()
+
     except MySQLdb.Error as err:
         flash(f"Database error: {err}", 'danger')
+        return redirect(url_for('cadastro_viaturas'))
     finally:
         if cursor: cursor.close()
 
@@ -210,7 +220,8 @@ def editar_contato(contato_id):
         flash('Contato não encontrado.', 'danger')
         return redirect(url_for('cadastro_viaturas'))
 
-    return render_template('editar_contato.html', contato=contato)
+    # Passa 'contato' E 'unidades' para o template
+    return render_template('editar_contato.html', contato=contato, unidades=unidades)
 
 @app.route('/adicionar_contato', methods=['POST'])
 def adicionar_contato():
@@ -692,6 +703,7 @@ def relatorios():
     return render_template('relatorios.html', supervisores_string=supervisores_string, cfps=cfps_data, viaturas=viaturas_data, viaturas_por_unidade=viaturas_por_unidade, viaturas_por_status=viaturas_por_status, totais_viaturas=totais_viaturas)
 
 # --- DASHBOARD ---
+# --- DASHBOARD ---
 @app.route('/dashboard')
 def dashboard():
     conn = None
@@ -709,6 +721,8 @@ def dashboard():
 
         if historico_completo:
             df = pd.DataFrame(historico_completo)
+            
+            # --- FUNÇÕES DE LIMPEZA ---
             def limpar_texto(texto):
                 if not isinstance(texto, str): return 'OUTROS'
                 texto_sem_acento = "".join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
@@ -718,6 +732,7 @@ def dashboard():
             df['fato_limpo'] = df['fato'].apply(limpar_texto)
             df['delegacia'] = df['delegacia'].fillna('N/D').str.strip().str.upper()
             df['status'] = df['status'].fillna('N/A').str.strip().str.upper()
+            
             delegacia_mapa = {'DEPAC CEPOL': 'CEPOL'}
             df['delegacia'] = df['delegacia'].replace(delegacia_mapa)
             
@@ -728,19 +743,36 @@ def dashboard():
                 return fato_limpo
             df['fato_agrupado'] = df['fato_limpo'].apply(agrupar_fato)
 
+            # --- KPIS ---
             kpis['total_ocorrencias'] = len(df)
             if not df['delegacia'].dropna().empty:
                 kpis['delegacia_top'] = df['delegacia'].mode().get(0, 'N/D')
             
+            # --- LÓGICA NOVA: AGRUPAR FATOS <= 5 ---
             contagem_fatos = df['fato_agrupado'].value_counts().reset_index()
             contagem_fatos.columns = ['fato', 'quantidade']
-            todos_fatos = contagem_fatos.to_dict('records')
-            for i in range(0, len(todos_fatos), 10):
-                dados_fatos_paginados.append(todos_fatos[i:i + 10])
+            
+            # Separa o que é grande do que é pequeno
+            fatos_principais = contagem_fatos[contagem_fatos['quantidade'] > 5].copy()
+            fatos_pequenos = contagem_fatos[contagem_fatos['quantidade'] <= 5].copy()
+            
+            # Converte os principais para lista de dicionários
+            lista_final = fatos_principais.to_dict('records')
+            
+            # Se houver fatos pequenos, soma tudo e cria uma categoria "DIVERSOS"
+            if not fatos_pequenos.empty:
+                soma_pequenos = int(fatos_pequenos['quantidade'].sum())
+                lista_final.append({'fato': 'DIVERSOS (<= 5)', 'quantidade': soma_pequenos})
+            
+            # Paginação (mantida caso a lista final ainda fique grande)
+            for i in range(0, len(lista_final), 10):
+                dados_fatos_paginados.append(lista_final[i:i + 10])
 
+            # --- RESTANTE DO CÓDIGO (Status e Mensal) ---
             contagem_status = df['status'].value_counts()
             status_chart_data = {'labels': contagem_status.index.tolist(), 'data': [int(q) for q in contagem_status.values.tolist()]}
             
+            # Cálculo de Médias de Tempo
             df_horas_total = df[df['tempo_total_dp'].notna()].copy()
             def hhmm_para_minutos(valor):
                 if isinstance(valor, timedelta): return valor.total_seconds() / 60
@@ -757,6 +789,7 @@ def dashboard():
                     h, m = divmod(int(media), 60)
                     kpis['media_tempo_dp'] = f"{h:02}:{m:02}"
 
+            # Lógica Mensal
             df['mes'] = df['data_registro'].dt.to_period('M').astype(str)
             meses_unicos = sorted(df['mes'].unique())
             for mes in meses_unicos:
