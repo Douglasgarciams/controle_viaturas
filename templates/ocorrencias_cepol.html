@@ -66,11 +66,16 @@
                 <label for="ro_cadg" class="form-label">R.O CADG:</label>
                 <input type="text" class="form-control" id="ro_cadg" name="ro_cadg">
             </div>
+
             <div class="col-md-4">
                 <label for="delegacia" class="form-label">Delegacia:</label>
-                <input type="text" class="form-control" id="delegacia" name="delegacia" placeholder="Digite o nome da delegacia">
+                <select class="form-select" id="delegacia" name="delegacia" required>
+                    <option value="" disabled selected>Selecione a Delegacia</option>
+                    {% for delegacia in lista_delegacias %}
+                    <option value="{{ delegacia }}">{{ delegacia }}</option>
+                    {% endfor %}
+                </select>
             </div>
-
             <div class="col-md-4">
                 <label for="chegada" class="form-label">Chegada (HH:MM):</label>
                 <input type="time" class="form-control" id="chegada" name="chegada">

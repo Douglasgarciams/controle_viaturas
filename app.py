@@ -62,6 +62,15 @@ def ensure_hh_mm_format_for_display(time_value):
 # 🔧 Status disponíveis
 STATUS_OPTIONS = ['ADM', 'CFP', 'FORÇA TATICA', 'RP', 'TRANSITO', 'ADJ CFP', 'INTERIOR', 'MOTO', 'ROTAC', 'CANIL', 'BOPE', 'ESCOLAR/PROMUSE', 'POL.COMUNITARIO', 'JUIZADO', 'TRANSITO/BLITZ']
 
+# 🚨 Lista de Delegacias disponíveis para seleção
+LISTA_DELEGACIAS = [
+    "1º DP", "2º DP", "3º DP", "4º DP", "5º DP", "6º DP", "7º DP", 
+    "DEPAC – CENTRO", "DEPAC – CEPOL", "DECCO", "DECCOR", "LAB LD/DRACCO", 
+    "DEAM", "DEAIJ", "DECAT", "DECON", "DEDFAZ", "DEFURV", "DHPP", "DENAR", 
+    "DEOPS", "DEPCA", "DERF", "DEVIR", "GARRAS", "POLINTER", "DELETRAN", 
+    "DELEAGRO"
+]
+
 # --- ROTAS DO SISTEMA ---
 
 @app.route('/', methods=['GET', 'POST'])
@@ -400,7 +409,7 @@ def gerenciar_ocorrencias():
     finally:
         if cursor: cursor.close()
 
-    return render_template('ocorrencias_cepol.html', ocorrencias=ocorrencias, lista_fatos_db=lista_fatos_db)
+    return render_template('ocorrencias_cepol.html', ocorrencias=ocorrencias, lista_fatos_db=lista_fatos_db, lista_delegacias=LISTA_DELEGACIAS)
 
 # ✏️ Rota para editar ocorrência (com campo de viatura e delegacia)
 @app.route('/editar_ocorrencia/<int:id>', methods=['GET', 'POST'])
