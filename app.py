@@ -417,18 +417,34 @@ def editar_ocorrencia(id):
     conn = None
     cursor = None
     lista_fatos_db = []
+    # 🚨 NOVO: Variável para armazenar a lista de delegacias 🚨
+    lista_delegacias = [] 
     try:
         conn = get_db()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
-        # Busca a lista de fatos para o dropdown
+        # 1. Busca a lista de fatos (OK)
         cursor.execute("SELECT nome FROM tipos_fatos ORDER BY nome ASC")
         lista_fatos_db = cursor.fetchall()
 
+        # 2. Busca a lista de delegacias (A CORREÇÃO)
+        # Se você tiver uma tabela de delegacias:
+        # cursor.execute("SELECT nome FROM delegacias ORDER BY nome ASC")
+        # lista_delegacias_db = [item['nome'] for item in cursor.fetchall()]
+
+        # Se a lista de delegacias for fixa (como no seu código HTML original):
+        lista_delegacias = [
+            "1ª DP", "2ª DP", "3ª DP", "4ª DP", "5ª DP", "6ª DP", "7ª DP",
+            "DEPAC CENTRO", "DEPAC CEPOL", "DEAM", "DCA", "DEFURV", "DERF", 
+            "DENAR", "DEH", "DEOPS", "GARRAS", "POLINTER"
+        ]
+        
+        # Lógica POST (Atualizar)
         if request.method == 'POST':
-            # Pega todos os dados do formulário
+            # ... (Seu código de POST continua aqui, usando a variável 'delegacia') ...
             delegacia = request.form.get('delegacia', '').strip()
             fato = request.form.get('fato', '').strip()
+            # ... (restante do código de POST) ...
             status = request.form.get('status', '').strip()
             protocolo = request.form.get('protocolo', '').strip()
             viatura_prefixo = request.form.get('viatura_prefixo', '').strip()
@@ -469,7 +485,7 @@ def editar_ocorrencia(id):
             flash('Ocorrência atualizada com sucesso!', 'success')
             return redirect(url_for('gerenciar_ocorrencias'))
 
-        # --- Lógica de GET ---
+        # --- Lógica de GET (Exibir Formulário) ---
         cursor.execute("SELECT * FROM ocorrencias_cepol WHERE id = %s", (id,))
         ocorrencia = cursor.fetchone()
 
@@ -485,11 +501,19 @@ def editar_ocorrencia(id):
     except MySQLdb.Error as err:
         flash(f"Erro no banco de dados ao carregar/atualizar: {err}", 'danger')
         return redirect(url_for('gerenciar_ocorrencias'))
+    except Exception as e:
+        # Catch other potential errors like datetime formatting
+        flash(f"Ocorreu um erro: {e}", 'danger')
+        return redirect(url_for('gerenciar_ocorrencias'))
     finally:
         if cursor:
             cursor.close()
 
-    return render_template('editar_ocorrencia.html', ocorrencia=ocorrencia, lista_fatos_db=lista_fatos_db)
+    # 🔑 A MUDANÇA PRINCIPAL: Passar lista_delegacias para o template
+    return render_template('editar_ocorrencia.html', 
+                           ocorrencia=ocorrencia, 
+                           lista_fatos_db=lista_fatos_db,
+                           lista_delegacias=lista_delegacias)
 
 @app.route('/arquivar_ocorrencia/<int:id>', methods=['POST'])
 def arquivar_ocorrencia(id):
@@ -909,7 +933,7 @@ def adicionar_fato():
             else:
                 cursor.execute("INSERT INTO tipos_fatos (nome) VALUES (%s)", (nome,))
                 conn.commit()
-                flash('Novo fato adicionado!', 'success')
+                flash('Novo fato adicionado, volte e atualize a página de gerenciamento para ver novo crime!', 'success')
         except Exception as e:
             flash(f'Erro ao adicionar: {e}', 'danger')
         finally:

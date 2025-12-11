@@ -40,13 +40,31 @@
             {# O formulário envia para a rota 'editar_ocorrencia' com o ID da ocorrência #}
             <form method="POST" action="{{ url_for('editar_ocorrencia', id=ocorrencia.id) }}">
                 <div class="row g-3">
-                    {# Campo Fato da Ocorrência #}
+                    
+                    {# --- MUDANÇA AQUI: INPUT COM DATALIST (BUSCA) + ENGRENAGEM --- #}
                     <div class="col-md-6">
                         <label for="fato" class="form-label">Fato da Ocorrência:</label>
-                        {# O "value" pré-preenche o campo com os dados da ocorrência vinda do banco #}
-                        <input type="text" class="form-control" id="fato" name="fato" value="{{ ocorrencia.fato or '' }}" required>
+                        <div class="input-group">
+                            {# Input conectado ao datalist: permite digitar para filtrar ou clicar para ver a lista #}
+                            <input class="form-control" list="listaFatosOptions" id="fato" name="fato" value="{{ ocorrencia.fato or '' }}" placeholder="Digite ou selecione..." required autocomplete="off">
+                            
+                            {# A lista oculta que alimenta a busca #}
+                            <datalist id="listaFatosOptions">
+                                {% for item in lista_fatos_db %}
+                                    <option value="{{ item.nome }}">
+                                {% endfor %}
+                                <option value="OUTROS">
+                            </datalist>
+
+                            {# Botão da Engrenagem (Preservado) #}
+                            <a href="{{ url_for('gerenciar_fatos') }}" class="btn btn-outline-secondary" title="Criar/Gerenciar Fatos" target="_blank">
+                                <i class="bi bi-gear-fill"></i>
+                            </a>
+                        </div>
                     </div>
-                    {# Campo Status (simplificado) #}
+                    {# --- FIM DA MUDANÇA --- #}
+
+                    {# Campo Status #}
                     <div class="col-md-6">
                         <label for="status" class="form-label">Status:</label>
                         <select class="form-select" id="status" name="status">
@@ -56,12 +74,13 @@
                             <option value="ENTREGA" {% if ocorrencia.status == 'ENTREGA' %}selected{% endif %}>ENTREGA</option>
                         </select>
                     </div>
+
                     {# Campo Protocolo #}
                     <div class="col-md-4">
                         <label for="protocolo" class="form-label">Protocolo:</label>
                         <input type="text" class="form-control" id="protocolo" name="protocolo" value="{{ ocorrencia.protocolo or '' }}" required>
                     </div>
-                    <div class="col-md-4"> {# Ou outro tamanho de coluna que se encaixe no seu layout #}
+                    <div class="col-md-4">
                         <label for="viatura_prefixo" class="form-label">Viatura (Prefixo):</label>
                         <input type="text" class="form-control" id="viatura_prefixo" name="viatura_prefixo" value="{{ ocorrencia.viatura_prefixo or '' }}">
                     </div>
@@ -69,6 +88,7 @@
                         <label for="ro_cadg" class="form-label">R.O. / CADG:</label>
                         <input type="text" class="form-control" id="ro_cadg" name="ro_cadg" value="{{ ocorrencia.ro_cadg or '' }}" required>
                     </div>
+
                     <div class="col-md-4">
                         <label for="chegada" class="form-label">Chegada na Delegacia (HH:MM):</label>
                         <input type="time" class="form-control" id="chegada" name="chegada" value="{{ ocorrencia.chegada_delegacia or '' }}" required>
@@ -93,7 +113,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                    {# Campos de tempo total e entrega (somente leitura, preenchidos pelo JS) #}
+
                     <div class="col-md-6">
                         <label for="tempo_total_dp" class="form-label">Tempo Total na DP:</label>
                         <input type="text" class="form-control" id="tempo_total_dp" name="tempo_total_dp" value="{{ ocorrencia.tempo_total_dp or '' }}" readonly>
@@ -113,7 +133,5 @@
 {% endblock %}
 
 {% block scripts %}
-    {# Seu script.js contém as funções de cálculo de tempo e printSection #}
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
-    {# O DOMContentLoaded no seu script.js já deve chamar calculateTimes ao carregar a página #}
 {% endblock %}

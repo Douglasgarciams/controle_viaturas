@@ -32,22 +32,29 @@
                 <input type="text" class="form-control" id="viatura_prefixo" name="viatura_prefixo" placeholder="Ex: 10-3797">
             </div>
             
+            {# --- ALTERAÇÃO AQUI: CAMPO FATO COM BUSCA (DATALIST) + ENGRENAGEM --- #}
             <div class="col-md-4">
                 <label for="fato" class="form-label">Fato:</label>
                 <div class="input-group">
-                    <select class="form-select" id="fato" name="fato">
-                        <option value="">Selecione o Fato...</option>
-                        {# Loop que preenche a lista vinda do banco #}
+                    {# Input onde o usuário digita ou clica para ver a lista #}
+                    <input class="form-control" list="listaFatosOptions" id="fato" name="fato" placeholder="Digite ou selecione..." autocomplete="off">
+                    
+                    {# A lista oculta que alimenta a busca #}
+                    <datalist id="listaFatosOptions">
                         {% for item in lista_fatos_db %}
-                            <option value="{{ item.nome }}">{{ item.nome }}</option>
+                            <option value="{{ item.nome }}">
                         {% endfor %}
-                        <option value="OUTROS">OUTROS (Se não houver na lista)</option>
-                    </select>
+                        <option value="OUTROS">
+                    </datalist>
+
+                    {# Botão da Engrenagem Mantido #}
                     <a href="{{ url_for('gerenciar_fatos') }}" class="btn btn-outline-secondary" title="Adicionar/Editar Crimes">
                         <i class="bi bi-gear-fill"></i>
                     </a>
                 </div>
             </div>
+            {# --- FIM DA ALTERAÇÃO --- #}
+
             <div class="col-md-4">
                 <label for="status" class="form-label">Status:</label>
                 <select id="status" name="status" class="form-select">
