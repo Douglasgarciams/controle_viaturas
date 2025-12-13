@@ -235,13 +235,38 @@
   <nav>
     <a href="{{ url_for('cadastro_viaturas') }}"><i class="bi bi-car-front"></i> VIATURAS</a>
     <a href="{{ url_for('gerenciar_ocorrencias') }}"><i class="bi bi-clipboard-check"></i> OCORRÊNCIAS</a>
+    
     <a href="{{ url_for('relatorios') }}"><i class="bi bi-file-earmark-bar-graph"></i> RELATÓRIOS</a>
     <a href="{{ url_for('dashboard') }}"><i class="bi bi-speedometer2"></i> ESTATÍSTICAS</a>
-    <!-- NOVO LINK AQUI -->
+    
     <a href="https://copomonline.onrender.com/atendimento" target="_blank">
         <i class="bi bi-headset"></i> ATENDIMENTO
     </a>
-  </nav>
+
+    <a href="#" onclick="verificarAcessoFalhas(event)" class="text-warning">
+        <i class="bi bi-exclamation-triangle-fill"></i> FALHAS
+    </a>
+
+</nav>
+
+<script>
+    function verificarAcessoFalhas(event) {
+        // Impede que o link abra imediatamente
+        event.preventDefault();
+
+        // Pede a senha
+        var senhaDigitada = prompt("⚠️ ÁREA RESTRITA SOMENTE EQUIPE 3\nDigite a senha de acesso:");
+
+        // Verifica a senha (equipe3copom)
+        if (senhaDigitada === "equipe3copom") {
+            // Se correta, redireciona para a rota do Flask
+            window.location.href = "{{ url_for('falhas') }}";
+        } else if (senhaDigitada !== null) {
+            // Se errada (e não cancelou), avisa
+            alert("Senha incorreta! Acesso negado.");
+        }
+    }
+</script>
 
   <main class="container my-4">
     <h2 class="text-center mb-4" style="color: #ffffff;">Superiores de dia - COPOM</h2>

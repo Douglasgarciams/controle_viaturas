@@ -6,11 +6,13 @@ import MySQLdb
 import pytz
 import unicodedata # Importante para limpeza de texto
 from flask import Flask, render_template, request, redirect, url_for, flash, g
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, date
 import pandas as pd
 from flask import send_file
 from io import BytesIO
 import tempfile 
+from flask import request, jsonify
+import unicodedata
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'sua-chave-secreta-para-desenvolvimento-local')
@@ -71,7 +73,130 @@ LISTA_DELEGACIAS = [
     "DELEAGRO"
 ]
 
-# --- ROTAS DO SISTEMA ---
+# --- FUNÇÃO AUXILIAR ---
+def padronizar_texto(texto):
+    """Remove acentos e deixa maiúsculo (ex: 'Conexão' -> 'CONEXAO')"""
+    if not texto: return ""
+    nfkd = unicodedata.normalize('NFKD', texto)
+    sem_acento = "".join([c for c in nfkd if not unicodedata.combining(c)])
+    return sem_acento.upper().strip()
+
+# ==============================================================================
+# 1. ROTA PRINCIPAL: FALHAS (Visualizar e Adicionar)
+# ==============================================================================
+@app.route('/falhas', methods=['GET', 'POST'])
+def falhas():
+    conn = get_db()
+    cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+
+    try:
+        # --- PARTE A: BUSCAR OPÇÕES DO MENU (Do Banco de Dados) ---
+        cursor.execute("SELECT * FROM tipos_falha ORDER BY nome ASC")
+        tipos_db = cursor.fetchall()
+        opcoes_falhas = [t['nome'] for t in tipos_db]
+
+        # --- PARTE B: SALVAR NOVO REGISTRO (POST) ---
+        if request.method == 'POST':
+            data_input = request.form.get('data_ocorrencia')
+            tipo = request.form.get('tipo_falha')
+            desc = request.form.get('descricao')
+            hora_inicio = request.form.get('hora_inicio')
+            hora_fim = request.form.get('hora_fim')
+
+            if tipo and desc and data_input:
+                try:
+                    sql = "INSERT INTO falhas_sistema (tipo_falha, descricao, data_registro, hora_inicio, hora_fim) VALUES (%s, %s, %s, %s, %s)"
+                    cursor.execute(sql, (tipo, desc, data_input, hora_inicio, hora_fim))
+                    conn.commit()
+                    flash('Registro salvo com sucesso!', 'success')
+                except Exception as e:
+                    conn.rollback()
+                    flash(f'Erro ao salvar: {e}', 'danger')
+            else:
+                flash('Preencha os campos obrigatórios!', 'warning')
+            
+            return redirect(url_for('falhas'))
+
+        # --- PARTE C: BUSCAR E FILTRAR (GET) ---
+        data_hoje_padrao = date.today().strftime('%Y-%m-%d')
+        search_query = request.args.get('search') # Pega o termo da pesquisa
+        
+        # Query Base
+        sql_base = "SELECT * FROM falhas_sistema"
+        params = []
+        
+        # Se tiver pesquisa, adiciona o filtro WHERE
+        if search_query:
+            sql_base += " WHERE descricao LIKE %s OR tipo_falha LIKE %s"
+            termo = f"%{search_query}%"
+            params = [termo, termo]
+            
+        sql_base += " ORDER BY data_registro DESC, hora_inicio DESC LIMIT 50"
+        
+        cursor.execute(sql_base, tuple(params))
+        historico_completo = cursor.fetchall()
+
+        # Estatísticas e Totais
+        cursor.execute("SELECT tipo_falha, COUNT(*) as qtd FROM falhas_sistema GROUP BY tipo_falha ORDER BY qtd DESC")
+        estatisticas = cursor.fetchall()
+
+        cursor.execute("SELECT COUNT(*) as total FROM falhas_sistema")
+        res = cursor.fetchone()
+        total_geral = res['total'] if res else 0
+
+        # Renderiza o HTML
+        return render_template('falhas.html', 
+                               opcoes_falhas=opcoes_falhas, 
+                               estatisticas=estatisticas, 
+                               total_geral=total_geral,
+                               historico_completo=historico_completo,
+                               data_hoje=data_hoje_padrao,
+                               search_query=search_query,
+                               falha_editar=None)
+
+    except Exception as e:
+        print(f"Erro na rota falhas: {e}")
+        return "Erro interno no servidor", 500
+    finally:
+        cursor.close()
+
+
+# ==============================================================================
+# 2. ROTA SECUNDÁRIA: GERENCIAR TIPOS (Engrenagem)
+# ==============================================================================
+@app.route('/gerenciar_tipos', methods=['POST'])
+def gerenciar_tipos():
+    conn = get_db()
+    cursor = conn.cursor()
+    acao = request.form.get('acao')
+    
+    try:
+        if acao == 'adicionar':
+            novo = request.form.get('novo_tipo')
+            if novo:
+                nome_formatado = padronizar_texto(novo)
+                # Verifica duplicidade
+                cursor.execute("SELECT id FROM tipos_falha WHERE nome=%s", (nome_formatado,))
+                if cursor.fetchone():
+                    flash(f'O tipo "{nome_formatado}" já existe.', 'warning')
+                else:
+                    cursor.execute("INSERT INTO tipos_falha (nome) VALUES (%s)", (nome_formatado,))
+                    conn.commit()
+                    flash(f'Tipo "{nome_formatado}" criado!', 'success')
+                    
+        elif acao == 'excluir':
+            nome = request.form.get('tipo_nome')
+            cursor.execute("DELETE FROM tipos_falha WHERE nome=%s", (nome,))
+            conn.commit()
+            flash('Tipo removido.', 'info')
+            
+    except Exception as e:
+        conn.rollback()
+        flash(f'Erro: {e}', 'danger')
+    finally:
+        cursor.close()
+        
+    return redirect(url_for('falhas'))
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -1120,5 +1245,110 @@ def exportar_relatorio_excel():
         if cursor:
             cursor.close()
 
+            # ⚠️ Importe datetime se ainda não tiver: from datetime import datetime
+
+
+    # =======================================================
+    # BLOCO 2: BUSCAR DADOS (GET)
+    # =======================================================
+    try:
+        # A. Filtro e Histórico
+        if tipo_selecionado and tipo_selecionado != "Todos":
+            query_hist = "SELECT * FROM falhas_sistema WHERE tipo_falha = %s ORDER BY data_registro DESC, hora_inicio DESC LIMIT 20"
+            cursor.execute(query_hist, (tipo_selecionado,))
+        else:
+            query_hist = "SELECT * FROM falhas_sistema ORDER BY data_registro DESC, hora_inicio DESC LIMIT 20"
+            cursor.execute(query_hist)
+        
+        historico_completo = cursor.fetchall()
+
+        # B. Estatísticas (Contagem por tipo)
+        cursor.execute("SELECT tipo_falha, COUNT(*) as qtd FROM falhas_sistema GROUP BY tipo_falha ORDER BY qtd DESC")
+        estatisticas = cursor.fetchall()
+
+        # C. Total Geral
+        cursor.execute("SELECT COUNT(*) as total FROM falhas_sistema")
+        resultado_total = cursor.fetchone()
+        if resultado_total:
+            total_geral = resultado_total['total']
+
+    except Exception as e:
+        print(f"Erro ao buscar dados (GET): {e}")
+        flash('Erro ao carregar histórico.', 'danger')
+    
+    finally:
+        cursor.close()
+
+    # =======================================================
+    # RENDERIZAÇÃO
+    # =======================================================
+    return render_template('falhas.html', 
+                           opcoes_falhas=opcoes_falhas, 
+                           estatisticas=estatisticas, 
+                           total_geral=total_geral,
+                           historico_completo=historico_completo,
+                           data_hoje=data_hoje_padrao,
+                           tipo_atual=tipo_selecionado)
+
+@app.route('/excluir/<int:id>')
+def excluir(id):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM falhas_sistema WHERE id = %s", (id,))
+        conn.commit()
+        flash('Registro excluído com sucesso!', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash(f'Erro ao excluir: {e}', 'danger')
+    finally:
+        cursor.close()
+        
+    return redirect(url_for('falhas'))
+
+@app.route('/editar/<int:id>', methods=['GET', 'POST'])
+def editar(id):
+    # 1. Configuração Inicial
+    conn = get_db()
+    cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+    
+    # 2. Se for POST, é a gravação da edição (UPDATE)
+    if request.method == 'POST':
+        tipo = request.form.get('tipo_falha')
+        desc = request.form.get('descricao')
+        data_input = request.form.get('data_ocorrencia')
+        hora_inicio = request.form.get('hora_inicio')
+        hora_fim = request.form.get('hora_fim')
+
+        sql = """
+            UPDATE falhas_sistema 
+            SET tipo_falha=%s, descricao=%s, data_registro=%s, hora_inicio=%s, hora_fim=%s 
+            WHERE id=%s
+        """
+        cursor.execute(sql, (tipo, desc, data_input, hora_inicio, hora_fim, id))
+        conn.commit()
+        flash('Registro atualizado com sucesso!', 'info')
+        cursor.close()
+        return redirect(url_for('falhas'))
+
+    # 3. Se for GET, busca os dados da falha para preencher o formulário
+    cursor.execute("SELECT * FROM falhas_sistema WHERE id = %s", (id,))
+    falha_editar = cursor.fetchone()
+    
+    # Busca o histórico normal para exibir a tabela embaixo
+    cursor.execute("SELECT * FROM falhas_sistema ORDER BY data_registro DESC LIMIT 20")
+    historico_completo = cursor.fetchall()
+    
+    # Dados auxiliares (dropdowns, stats)
+    opcoes_falhas = ["FALHA CADG até 3min", "QUEDA CADG TOTAL + 3min", "MICROSIP", "RADIO DIGITAL", "OUTROS"]
+    cursor.close()
+    
+    # Renderiza o MESMO template, mas passando a variável 'falha_editar'
+    return render_template('falhas.html', 
+                           opcoes_falhas=opcoes_falhas, 
+                           historico_completo=historico_completo,
+                           falha_editar=falha_editar, # <--- O SEGREDO ESTÁ AQUI
+                           data_hoje=falha_editar['data_registro'], # Preenche a data
+                           total_geral=0, estatisticas=[]) # Simplificado para edição
 if __name__ == '__main__':
     app.run(debug=True)
